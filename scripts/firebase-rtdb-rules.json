@@ -1,0 +1,54 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "users": {
+      "$uid": {
+        ".write": "auth.uid === $uid"
+      }
+    },
+    "groups": {
+      "$groupId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "groupMembers": {
+      "$groupId": {
+        "$uid": {
+          ".write": "auth.uid === $uid || root.child('groups/'+$groupId+'/adminUid').val() === auth.uid"
+        }
+      }
+    },
+    "solutions": {
+      "$groupId": {
+        "$solutionId": {
+          ".write": "auth != null && (newData.child('createdBy').val() === auth.uid || root.child('groups/'+$groupId+'/adminUid').val() === auth.uid)"
+        }
+      }
+    },
+    "comments": {
+      "$solutionId": {
+        "$commentId": {
+          ".write": "auth != null && (newData.child('authorUid').val() === auth.uid)"
+        }
+      }
+    },
+    "upvotes": {
+      "solutions": {
+        "$solutionId": {
+          "$uid": {
+            ".write": "auth.uid === $uid"
+          }
+        }
+      }
+    },
+    "bookmarks": {
+      "$uid": {
+        "$solutionId": {
+          ".write": "auth.uid === $uid"
+        }
+      }
+    }
+  }
+}
