@@ -1,0 +1,3 @@
+// This file is just an informational placeholder. No API routes required.
+// When a solution is created, consider also writing to `solutions_global/{solutionId}`
+// so search/leaderboard can look up across groups without scanning each group node.
