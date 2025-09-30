@@ -22,6 +22,8 @@ interface Question {
   status: 'Completed' | 'Attempted' | 'Unattempted';
   difficulty: 'Easy' | 'Medium' | 'Hard';
   link?: string; 
+  createdAt?: number;
+  expiresAt?: number;
 }
 
 interface GroupData {
@@ -225,18 +227,25 @@ export default function QuestionIndexPage() {
     const groupRef = ref(db, paths.group(groupId));
     onValue(groupRef, (snapshot) => {
       const groupName = snapshot.val()?.name || `Group ${groupId}`;
-      // Fetch questions
+      // Fetch questions from canonical path
       const questionsRef = ref(db, paths.groupQuestionsCollection(groupId));
+
       onValue(questionsRef, (qSnap) => {
         const questionsObj = qSnap.val() || {};
-        const questions: Question[] = Object.entries(questionsObj).map(([id, q]: any) => ({
-          id,
-          title: q.title,
-          points: q.points,
-          difficulty: q.difficulty,
-          link: q.link,
-          status: 'Unattempted', // TODO: Replace with user-specific status
-        }));
+        const now = Date.now();
+        const questions: Question[] = Object.entries(questionsObj)
+          .map(([id, q]: any) => ({
+            id,
+            title: q.title,
+            points: q.points,
+            difficulty: q.difficulty,
+            link: q.link,
+            createdAt: q.createdAt ?? 0,
+            expiresAt: q.expiresAt ?? null,
+            status: 'Unattempted' as Question['status'], // TODO: Replace with user-specific status
+          }))
+          .filter((q) => !q.expiresAt || q.expiresAt > now)
+          .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
         setGroupData({ name: groupName, questions });
         setLoading(false);
       }, (err) => {
@@ -252,16 +261,21 @@ export default function QuestionIndexPage() {
 
   // Add question handler
   const handleAddQuestion = async (q: QuestionBase) => { // NOTE: I've updated the type to QuestionBase for clarity based on your modal
-  const questionsRef = ref(db, paths.groupQuestionsCollection(groupId));
-  const newRef = push(questionsRef);
+    const questionsRef = ref(db, paths.groupQuestionsCollection(groupId));
+    const newRef = push(questionsRef);
+    const now = Date.now();
+    const oneDayMs = 24 * 60 * 60 * 1000;
     await set(newRef, {
-    title: q.title,
-    points: q.points,
-    difficulty: q.difficulty,
-    link: q.link || null, 
+      id: newRef.key,
+      title: q.title,
+      points: q.points,
+      difficulty: q.difficulty,
+      link: q.link || null,
+      createdAt: now,
+      expiresAt: now + oneDayMs,
     });
     setModalOpen(false);
- };
+  };
 
   if (loading) {
     return (

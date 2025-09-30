@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { db } from "@/lib/firebase"
 import { ref, push, serverTimestamp, set, update } from "firebase/database"
+import { paths } from "@/lib/paths"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -11,12 +12,12 @@ import { CodeEditor } from "@/components/editor/code-editor"
 
 type Props = {
   groupId: string
-  todaysQuestionId?: string | null
+  questionId?: string | null
 }
 
 const LANGS = ["python", "java", "cpp", "c", "javascript", "typescript"] as const
 
-export function SubmitForm({ groupId, todaysQuestionId }: Props) {
+export function SubmitForm({ groupId, questionId }: Props) {
   const { user } = useAuth()
   const [language, setLanguage] = useState<(typeof LANGS)[number]>("javascript")
   const [code, setCode] = useState("")
@@ -31,11 +32,13 @@ export function SubmitForm({ groupId, todaysQuestionId }: Props) {
     if (!code.trim() || !approach.trim() || !tc.trim() || !sc.trim()) return
 
     const expiresAt = Date.now() + 24 * 60 * 60 * 1000 // 24 hours
-    const solutionId = push(ref(db, `ephemeralSubmissions/${groupId}`)).key!
+    const qid = questionId || "unassigned"
+    const solutionId = push(ref(db, paths.solutionsEphemeral(groupId, qid))).key!
 
     const payload = {
       id: solutionId,
       groupId,
+      questionId: qid,
       code,
       language,
       approach,
@@ -51,19 +54,19 @@ export function SubmitForm({ groupId, todaysQuestionId }: Props) {
         .split(",")
         .map((t) => t.trim().toLowerCase())
         .filter(Boolean),
-      todaysQuestionId: todaysQuestionId || null,
+      todaysQuestionId: qid,
       expiresAt,
       source: "ephemeral",
     }
 
-    await set(ref(db, `ephemeralSubmissions/${groupId}/${solutionId}`), payload)
-
-    await set(ref(db, `solutions/${groupId}/${solutionId}`), payload)
+    // Write under canonical ephemeral path
+    await set(ref(db, paths.solutionEphemeralDoc(groupId, qid, solutionId)), payload)
 
     await update(ref(db), {
       [`solutions_global/${solutionId}`]: {
         id: solutionId,
         groupId,
+        questionId: qid,
         authorName: payload.authorName,
         language: payload.language,
         problemLink: payload.problemLink || null,
@@ -86,10 +89,14 @@ export function SubmitForm({ groupId, todaysQuestionId }: Props) {
     ])
 
     try {
-      const key = `devripple_submissions_${groupId}`
-      const arr = JSON.parse(localStorage.getItem(key) || "[]")
-      arr.unshift(payload)
-      localStorage.setItem(key, JSON.stringify(arr.slice(0, 200)))
+      const keyNew = `devripple_submissions_${groupId}`
+      const keyCompat = `devripple_submissions/${groupId}`
+      const arrNew = JSON.parse(localStorage.getItem(keyNew) || "[]")
+      const arrCompat = JSON.parse(localStorage.getItem(keyCompat) || "[]")
+      arrNew.unshift(payload)
+      arrCompat.unshift(payload)
+      localStorage.setItem(keyNew, JSON.stringify(arrNew.slice(0, 200)))
+      localStorage.setItem(keyCompat, JSON.stringify(arrCompat.slice(0, 200)))
     } catch {}
   }
 

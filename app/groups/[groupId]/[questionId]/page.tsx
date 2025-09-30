@@ -105,9 +105,9 @@ export default function GroupPage() {
     }
   )
 
+
   const { data: ephemerals } = useSWRSubscription(
-    groupId && currentQuestionId ? paths.solutionsEphemeral(groupId, currentQuestionId) : null,
-    // Path resolves to: `ephemeralSubmissions/${groupId}/${questionId}`
+    groupId ? `ephemeralSubmissions/${groupId}` : null,
     (key, { next }) => {
       const unsub = onValue(ref(db, key), (snap) => {
         const val = snap.val() || {}
@@ -124,17 +124,14 @@ export default function GroupPage() {
   const ephemeralValid = (ephemerals || []).filter((s: any) => !s.expiresAt || s.expiresAt > now)
 
   let mergedSolutions = ephemeralValid
-   if (user) {
+  if (user) {
     try {
       const key = `devripple_submissions/${groupId}` // backward compat if different key used before
       const key2 = `devripple_submissions_${groupId}`
       const ls = JSON.parse(localStorage.getItem(key) || localStorage.getItem(key2) || "[]")
       if (Array.isArray(ls) && ls.length) {
-        // Filter local solutions to only include those for the current question
-        const localForCurrentQuestion = ls.filter((s: any) => s.questionId === currentQuestionId)
-
         // mark local entries
-        const withFlag = localForCurrentQuestion.map((s: any) => ({ ...s, localOnly: true }))
+        const withFlag = ls.map((s: any) => ({ ...s, localOnly: true }))
         // de-duplicate by id preferring ephemeral
         const byId = new Map<string, any>()
         ;[...withFlag, ...ephemeralValid].forEach((s: any) => byId.set(s.id, s))
