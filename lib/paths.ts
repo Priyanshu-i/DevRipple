@@ -4,9 +4,9 @@
 // - groups/{groupId}
 // - groupQuestions/{groupId}/{questionId}
 // - ephemeralSubmissions/{groupId}/{questionId}/{solutionId}
-//     - comments/{commentId}
-//     - upvotes/{userId}: true
-//     - bookmarkedBy/{userId}: true
+//   - comments/{commentId}            <-- Nested under solutionId
+//   - upvotes/{userId}: true          <-- Nested under solutionId
+//   - bookmarkedBy/{userId}: true     <-- Nested under solutionId
 // - groupStats/{groupId}/{uid}
 // - userStats/{uid}
 
@@ -27,18 +27,29 @@ export const paths = {
   groupQuestionsCollection: (groupId: string) => `groupQuestions/${groupId}`,
   groupQuestionDocument: (groupId: string, questionId: string) => `groupQuestions/${groupId}/${questionId}`,
 
-  // Solutions (ephemeral, nested by group and question)
-  solutionsEphemeral: (groupId: string, questionId: string) => `ephemeralSubmissions/${groupId}/${questionId}`,
-  solutionEphemeralDoc: (groupId: string, questionId: string, solutionId: string) =>
+  // === SOLUTIONS (EPHEMERAL) ===
+
+  /** The collection of all solutions for a specific group and question. */
+  solutionsCollection: (groupId: string, questionId: string) => 
+    `ephemeralSubmissions/${groupId}/${questionId}`,
+
+  /** The document path for a specific solution. */
+  solutionDocument: (groupId: string, questionId: string, solutionId: string) =>
     `ephemeralSubmissions/${groupId}/${questionId}/${solutionId}`,
-  solutionEphemeralComments: (groupId: string, questionId: string, solutionId: string) =>
-    `ephemeralSubmissions/${groupId}/${questionId}/${solutionId}/comments`,
-  solutionEphemeralUpvotes: (groupId: string, questionId: string, solutionId: string, userId?: string) =>
+
+  /** The collection of all comments for a specific solution. */
+  solutionComments: (groupId: string, questionId: string, solutionId: string) =>
+    `${paths.solutionDocument(groupId, questionId, solutionId)}/comments`,
+  
+  /** The upvotes collection path, optionally for a specific user. */
+  solutionUpvotes: (groupId: string, questionId: string, solutionId: string, userId?: string) =>
     userId
-      ? `ephemeralSubmissions/${groupId}/${questionId}/${solutionId}/upvotes/${userId}`
-      : `ephemeralSubmissions/${groupId}/${questionId}/${solutionId}/upvotes`,
-  solutionEphemeralBookmarks: (groupId: string, questionId: string, solutionId: string, userId?: string) =>
+      ? `${paths.solutionDocument(groupId, questionId, solutionId)}/upvotes/${userId}`
+      : `${paths.solutionDocument(groupId, questionId, solutionId)}/upvotes`,
+
+  /** The bookmarks collection path, optionally for a specific user. */
+  solutionBookmarks: (groupId: string, questionId: string, solutionId: string, userId?: string) =>
     userId
-      ? `ephemeralSubmissions/${groupId}/${questionId}/${solutionId}/bookmarkedBy/${userId}`
-      : `ephemeralSubmissions/${groupId}/${questionId}/${solutionId}/bookmarkedBy`,
+      ? `${paths.solutionDocument(groupId, questionId, solutionId)}/bookmarkedBy/${userId}`
+      : `${paths.solutionDocument(groupId, questionId, solutionId)}/bookmarkedBy`,
 }

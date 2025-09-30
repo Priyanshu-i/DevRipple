@@ -3,11 +3,17 @@
 import { useMemo, useState } from "react"
 import { highlight, languages } from "prismjs"
 import "prismjs/themes/prism.css"
+import "prismjs/components/prism-python"
+import "prismjs/components/prism-java"
+import "prismjs/components/prism-c"
+import "prismjs/components/prism-cpp"
+import "prismjs/components/prism-javascript"
+import "prismjs/components/prism-typescript"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 type Props = {
-  code: string
+  code: string // Assuming code can technically be null/undefined from DB despite type
   language: string
   onAddInlineComment?: (line: number, text: string) => Promise<void>
   inlineComments?: Record<number, Array<{ id: string; text: string; author: string }>>
@@ -15,16 +21,34 @@ type Props = {
 
 export function CodeViewer({ code, language, onAddInlineComment, inlineComments = {} }: Props) {
   const html = useMemo(
-    () => highlight(code, (languages as any)[language] || languages.javascript, language),
+    () => {
+      // 1. Defensively convert code to a string to prevent "Cannot read properties of undefined (reading 'length')"
+      const codeString = String(code || "")
+      
+      // 2. Safely look up the grammar, falling back to javascript if the language is unknown
+      const selectedGrammar = (languages as any)[language]
+      const grammarToUse = selectedGrammar || languages.javascript
+      const languageName = selectedGrammar ? language : "javascript"
+
+      // 3. Highlight the code
+      return highlight(
+        codeString,
+        grammarToUse,
+        languageName
+      )
+    },
     [code, language],
   )
-  const lines = useMemo(() => code.split("\n"), [code])
+  
+  // Also ensure `code` is a string here for `lines` calculation
+  const lines = useMemo(() => String(code || "").split("\n"), [code])
   const [activeLine, setActiveLine] = useState<number | null>(null)
   const [commentText, setCommentText] = useState("")
 
   return (
     <div className="rounded-md border bg-card">
       <div className="grid grid-cols-[3rem_1fr] gap-0">
+        {/* Line numbers column */}
         <div className="select-none border-r bg-muted/50 p-2 text-right text-xs text-muted-foreground">
           {lines.map((_, i) => (
             <div key={i} className="cursor-pointer py-0.5" onClick={() => setActiveLine(i + 1)}>
@@ -32,11 +56,15 @@ export function CodeViewer({ code, language, onAddInlineComment, inlineComments 
             </div>
           ))}
         </div>
+        
+        {/* Code content column */}
         <pre className="overflow-x-auto p-2 text-sm leading-6">
-          <code dangerouslySetInnerHTML={{ __html: html }} />
+          {/* Using the memoized and robustly generated HTML */}
+          <code className={`language-${language}`} dangerouslySetInnerHTML={{ __html: html }} />
         </pre>
       </div>
 
+      {/* Inline comments section */}
       {activeLine && onAddInlineComment && (
         <div className="border-t p-2">
           <div className="mb-2 text-xs text-muted-foreground">Add comment on line {activeLine}</div>

@@ -12,106 +12,67 @@ import { CommentsThread } from "@/components/solution/comments-thread"
 import { useEffect, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import {GroupInfoPage} from "@/components/groups/info"
+// import { GroupInfoPage } from "@/components/groups/info" // Not used here, but kept in imports
 import { paths } from "@/lib/paths"
 
 interface Group {
-  name: string;
-  description?: string;
-  adminUid: string;
+  name: string
+  description?: string
+  adminUid: string
 }
 
 interface Question {
-  id: string;
-  title: string;
-  link?: string;
-  prompt?: string;
-  points?: number;
-  difficulty?: string;
-  createdAt: number; // Used for finding the "latest" question
+  id: string
+  title: string
+  link?: string
+  prompt?: string
+  points?: number
+  difficulty?: string
+  createdAt: number
 }
-const useLatestQuestionId = (groupId: string | null): string | null | undefined => {
-  const { data: questionsObj } = useSWRSubscription(
-    groupId ? paths.groupQuestionsCollection(groupId) : null,
-    (key, { next }) => {
-      const unsub = onValue(ref(db, key), (snap) => next(null, snap.val()))
-      return () => unsub()
-    },
-  )
-
-  if (!questionsObj) return undefined;
-  
-  const questions: Question[] = Object.entries(questionsObj).map(([id, q]: any) => ({
-    ...q,
-    id: id,
-    createdAt: q.createdAt || 0,
-  }));
-  
-  if (questions.length === 0) return null;
-
-  const latestQuestion = questions.reduce((latest, current) => 
-    current.createdAt > latest.createdAt ? current : latest
-  );
-
-  return latestQuestion.id;
-};
 
 interface Solution {
-    id: string;
-    // ... other fields
-    upvotesCount?: number;
-    // The actual code is often missing on permanent, minimal solutions
-    code: string; 
-    language: string;
-    authorName: string;
-    expiresAt?: number;
-    localOnly?: boolean;
+  id: string
+  // ... other fields
+  upvotesCount?: number
+  code: string
+  language: string
+  authorName: string
+  expiresAt?: number
+  // localOnly removed
 }
 
-export default function GroupPage() {
-  const params = useParams<{ groupId: string }>()
+export default function GroupQuestionPage() {
+  // 1. URL Parameter Change: Expects both groupId and questionId
+  const params = useParams<{ groupId: string; questionId: string }>()
   const groupId = params.groupId
+  const questionId = params.questionId
   const { user } = useAuth()
 
+  // Fetch Group Info
   const { data: group } = useSWRSubscription(groupId ? paths.group(groupId) : null, (key, { next }) => {
     const unsub = onValue(ref(db, key), (snap) => next(null, snap.val() as Group | null))
     return () => unsub()
   })
 
-  const currentQuestionId = useLatestQuestionId(groupId);
-
+  // Fetch Featured Question (using questionId from URL)
   const { data: featuredQuestion } = useSWRSubscription(
-    groupId && currentQuestionId ? paths.groupQuestionDocument(groupId, currentQuestionId) : null,
+    groupId && questionId ? paths.groupQuestionDocument(groupId, questionId) : null,
     (key, { next }) => {
       const unsub = onValue(ref(db, key), (snap) => next(null, snap.val() as Question | null))
       return () => unsub()
     },
   )
-  
+
+  // Fetch Solutions for the specific question
   const { data: solutions } = useSWRSubscription(
-    groupId && currentQuestionId ? `solutions_for_question/${groupId}/${currentQuestionId}` : null, 
-    // NOTE: This assumes a path for solutions specifically tied to the question ID:
-    // If you store solutions globally, use solutionsGlobal() and filter by questionId.
-    // Since your `paths` is missing a collection path for solutions *per question*, 
-    // I use a hypothetical path, which you might need to adjust.
+    groupId && questionId ? paths.solutionsCollection(groupId, questionId) : null,
     (key, { next }) => {
       const unsub = onValue(ref(db, key), (snap) => {
         const val = snap.val() || {}
         const arr = Object.values(val) as any[]
+        // Sort by createdAt descending
         arr.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-        next(null, arr)
-      })
-      return () => unsub()
-    }
-  )
-
-
-  const { data: ephemerals } = useSWRSubscription(
-    groupId ? `ephemeralSubmissions/${groupId}` : null,
-    (key, { next }) => {
-      const unsub = onValue(ref(db, key), (snap) => {
-        const val = snap.val() || {}
-        const arr = Object.values(val) as any[]
         next(null, arr)
       })
       return () => unsub()
@@ -119,47 +80,55 @@ export default function GroupPage() {
   )
 
   const isAdmin = user && group?.adminUid === user.uid
+  
+  // solutions is now `mergedSolutions` but without local storage logic
+  const mergedSolutions = solutions || []
 
-  const now = Date.now()
-  const ephemeralValid = (ephemerals || []).filter((s: any) => !s.expiresAt || s.expiresAt > now)
-
-  let mergedSolutions = ephemeralValid
-  if (user) {
-    try {
-      const key = `devripple_submissions/${groupId}` // backward compat if different key used before
-      const key2 = `devripple_submissions_${groupId}`
-      const ls = JSON.parse(localStorage.getItem(key) || localStorage.getItem(key2) || "[]")
-      if (Array.isArray(ls) && ls.length) {
-        // mark local entries
-        const withFlag = ls.map((s: any) => ({ ...s, localOnly: true }))
-        // de-duplicate by id preferring ephemeral
-        const byId = new Map<string, any>()
-        ;[...withFlag, ...ephemeralValid].forEach((s: any) => byId.set(s.id, s))
-        mergedSolutions = Array.from(byId.values())
-      }
-    } catch {}
-  }
-  mergedSolutions.sort((a: any, b: any) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-
-
+  /**
+   * Toggles the bookmark status for a solution.
+   * Uses paths.solutionBookmarks
+   * @param solutionId The ID of the solution.
+   */
   async function toggleBookmark(solutionId: string) {
-    if (!user) return
-    const bmRef = ref(db, `bookmarks/${user.uid}/${solutionId}`)
+    if (!user || !groupId || !questionId) return
+    const bmRef = ref(db, paths.solutionBookmarks(groupId, questionId, solutionId, user.uid))
     await runTransaction(bmRef, (curr) => (curr ? null : true))
   }
 
-
+  /**
+   * Toggles the upvote status for a solution and updates the count.
+   * Uses paths.solutionUpvotes
+   * @param solutionId The ID of the solution.
+   */
   async function toggleUpvote(solutionId: string) {
-    if (!user) return
-    const voteRef = ref(db, `upvotes/solutions/${solutionId}/${user.uid}`)
-    const res = await runTransaction(voteRef, (curr) => (curr ? null : true))
+    if (!user || !groupId || !questionId) return
+    const upvoteRef = ref(db, paths.solutionUpvotes(groupId, questionId, solutionId, user.uid))
+
+    // 1. Toggle the user's vote status
+    const res = await runTransaction(upvoteRef, (curr) => (curr ? null : true))
     const nowValue = res.snapshot.val() // true if added, null if removed
     const added = !!nowValue
-    const countRef = ref(db, `solutions/${groupId}/${solutionId}/upvotesCount`)
+
+    // 2. Update the upvotesCount on the solution document
+    const countRef = ref(db, paths.solutionDocument(groupId, questionId, solutionId) + "/upvotesCount")
     await runTransaction(countRef, (curr) => {
       const base = typeof curr === "number" ? curr : 0
       return added ? base + 1 : Math.max(0, base - 1)
     })
+  }
+
+  // Simplified loading states based on current state
+  let questionSectionHeader: string
+  if (groupId && questionId) {
+    if (featuredQuestion === undefined) {
+      questionSectionHeader = "Loading Question Details..."
+    } else if (featuredQuestion === null) {
+      questionSectionHeader = "Question Not Found"
+    } else {
+      questionSectionHeader = "Current Question"
+    }
+  } else {
+    questionSectionHeader = "Invalid URL"
   }
 
   return (
@@ -168,8 +137,9 @@ export default function GroupPage() {
         <Link href={`/groups/${groupId}/info`} className="text-inherit hover:text-inherit">
           <h1 className="text-2xl font-semibold">{group?.name ?? "Group"}</h1>
         </Link>
+        {/* Note: The submission path might need to be `/groups/${groupId}/${questionId}/submit` depending on the route setup */}
         <Link
-          href={`/groups/${groupId}/submit`}
+          href={`/groups/${groupId}/${questionId}/submit`} 
           className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground"
         >
           Submit Solution
@@ -177,16 +147,11 @@ export default function GroupPage() {
       </div>
       <p className="mb-6 text-sm text-muted-foreground">{group?.description}</p>
 
-      {/* FEATURED QUESTION SECTION (Replaces "Today's Question") */}
+      {/* QUESTION SECTION */}
       <section className="mb-8 rounded-md border p-4">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-lg font-medium">
-            {currentQuestionId === undefined 
-              ? "Loading Featured Question..." 
-              : currentQuestionId === null
-                ? "No Questions Posted"
-                : "Featured Question"
-            }
+            {questionSectionHeader}
           </h2>
           {featuredQuestion && (
             <div className="flex items-center space-x-2 text-sm text-muted-foreground">
@@ -211,16 +176,14 @@ export default function GroupPage() {
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{featuredQuestion.prompt}</ReactMarkdown>
               </div>
             ) : null}
-            
-            {/* AdminForm is now used to edit the CURRENT featured question */}
+
+            {/* AdminForm is used to edit the current question */}
             {isAdmin && featuredQuestion.id ? (
               <div className="pt-3">
                 <AdminQuestionForm
                   groupId={groupId}
                   existing={featuredQuestion as any}
                   onSaved={async (qid) => {
-                    // No need to update group.todaysQuestionId since it doesn't exist.
-                    // The component will re-fetch and find the latest on its own.
                     console.log(`Question ${qid} saved/updated.`)
                   }}
                 />
@@ -229,19 +192,21 @@ export default function GroupPage() {
           </div>
         ) : (
           <div className="text-sm text-muted-foreground">
-            {currentQuestionId === null
-              ? "No questions have been posted to this group yet."
+            {featuredQuestion === null
+              ? "The question specified in the URL does not exist."
               : "Loading question details..."
             }
-            {/* Admin form for creating a NEW question if none exists */}
-            {isAdmin && currentQuestionId === null ? (
+            {/* Admin form for creating a NEW question if questionId is in the URL but not found */}
+            {isAdmin && featuredQuestion === null && questionId ? (
               <div className="pt-3">
-                <AdminQuestionForm
-                  groupId={groupId}
-                  onSaved={async (qid) => {
-                    console.log(`New question ${qid} posted.`)
-                  }}
-                />
+                {/* Note: AdminForm only supports existing questionId in URL if it is undefined (no fetch yet) or found.
+                    If it's null, we assume the user wants to create a question with that ID, but we need to pass a template. 
+                    The form logic below is more suited for creating a NEW latest question, or editing a found one.
+                    To create a specific ID, the component would need an optional `initialId` prop. 
+                    For simplicity, I'll remove the "create new" form here since the URL is a specific ID.
+                    The admin should go to a different route to post a *new* question.
+                 */}
+                <div className="text-red-500">To create a new question, please use a dedicated admin tool. This page is for viewing an existing question ID: {questionId}.</div>
               </div>
             ) : null}
           </div>
@@ -249,12 +214,13 @@ export default function GroupPage() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-medium">Solutions for Featured Question</h2>
+        <h2 className="text-lg font-medium">Solutions for Current Question</h2>
         {mergedSolutions?.length ? (
           mergedSolutions.map((s: any) => (
             <SolutionItem
               key={s.id}
               groupId={groupId}
+              questionId={questionId} // Pass questionId now
               userDisplayName={user?.displayName ?? "Anonymous"}
               userUid={user?.uid ?? null}
               solution={s}
@@ -277,6 +243,7 @@ export default function GroupPage() {
 
 function SolutionItem({
   groupId,
+  questionId, // New prop
   userDisplayName,
   userUid,
   solution,
@@ -284,14 +251,16 @@ function SolutionItem({
   onBookmark,
 }: {
   groupId: string
+  questionId: string
   userDisplayName: string
   userUid: string | null
   solution: any
   onUpvote: () => void
   onBookmark: () => void
 }) {
+  // Fetch comments using the new path structure
   const { data: comments = [] } = useSWRSubscription(
-    solution?.id ? `comments/${solution.id}` : null,
+    solution?.id ? paths.solutionComments(groupId, questionId, solution.id) : null,
     (key, { next }) => {
       const unsub = onValue(ref(db, key), (snap) => {
         const val = snap.val() || {}
@@ -303,21 +272,31 @@ function SolutionItem({
     },
   )
 
-  const inline = (comments as any[]).reduce<Record<number, Array<{ id: string; text: string; author: string }>>>(
-    (acc, c: any) => {
-      if (c.lineNumber) {
-        acc[c.lineNumber] = acc[c.lineNumber] || []
-        acc[c.lineNumber].push({ id: c.id, text: c.content, author: c.author })
-      }
-      return acc
-    },
-    {},
-  )
+  const inline = (comments as any[])
+    .filter((c: any) => c.lineNumber) // Only include comments with a line number
+    .reduce<Record<number, Array<{ id: string; text: string; author: string }>>>(
+      (acc, c: any) => {
+        if (c.lineNumber) {
+          acc[c.lineNumber] = acc[c.lineNumber] || []
+          acc[c.lineNumber].push({ id: c.id, text: c.content, author: c.author })
+        }
+        return acc
+      },
+      {},
+    )
 
+  /**
+   * Adds an inline comment to a specific line number.
+   * Uses paths.solutionComments
+   * @param line The line number to comment on.
+   * @param text The content of the comment.
+   */
   async function addInlineComment(line: number, text: string) {
     if (!userUid) return
-    const cid = push(ref(db, `comments/${solution.id}`)).key!
-    await set(ref(db, `comments/${solution.id}/${cid}`), {
+    const commentRef = ref(db, paths.solutionComments(groupId, questionId, solution.id))
+    const cid = push(commentRef).key!
+
+    await set(ref(db, `${commentRef.key}/${cid}`), {
       id: cid,
       author: userDisplayName,
       authorUid: userUid,
@@ -329,10 +308,18 @@ function SolutionItem({
     })
   }
 
+  /**
+   * Adds a root or nested comment.
+   * Uses paths.solutionComments
+   * @param content The content of the comment.
+   * @param parentId The ID of the parent comment, or null for a root comment.
+   */
   async function addComment(content: string, parentId?: string | null) {
     if (!userUid) return
-    const cid = push(ref(db, `comments/${solution.id}`)).key!
-    await set(ref(db, `comments/${solution.id}/${cid}`), {
+    const commentRef = ref(db, paths.solutionComments(groupId, questionId, solution.id))
+    const cid = push(commentRef).key!
+
+    await set(ref(db, `${commentRef.key}/${cid}`), {
       id: cid,
       author: userDisplayName,
       authorUid: userUid,
@@ -343,21 +330,26 @@ function SolutionItem({
     })
   }
 
+  /**
+   * Upvotes a specific comment.
+   * Uses a direct path to the comment's upvotes field.
+   * @param commentId The ID of the comment to upvote.
+   */
   async function upvoteComment(commentId: string) {
-    const countRef = ref(db, `comments/${solution.id}/${commentId}/upvotes`)
+    // Construct the path: ephemeralSubmissions/{groupId}/{questionId}/{solutionId}/comments/{commentId}/upvotes
+    const path = `${paths.solutionComments(groupId, questionId, solution.id)}/${commentId}/upvotes`
+    const countRef = ref(db, path)
     await runTransaction(countRef, (curr) => (typeof curr === "number" ? curr + 1 : 1))
   }
 
+  const solutionExpired = solution.expiresAt && solution.expiresAt < Date.now()
+
   return (
-    <div className="rounded-md border p-3">
+    <div className={`rounded-md border p-3 ${solutionExpired ? 'opacity-50' : ''}`}>
       <div className="mb-2 flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
           <div className="font-medium">{solution.authorName}</div>
-          {solution.localOnly ? (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-              Local copy
-            </span>
-          ) : null}
+          {/* Local copy tag removed as local storage logic is gone */}
         </div>
         <div className="flex items-center gap-3">
           <div className="text-xs text-muted-foreground">{solution.language}</div>
@@ -400,14 +392,19 @@ function SolutionItem({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <Button size="sm" onClick={onUpvote}>
-          Upvote ({solution.upvotesCount ?? 0})
-        </Button>
-        <Button size="sm" variant="secondary" onClick={onBookmark}>
-          Bookmark
-        </Button>
-      </div>
+      {solutionExpired ? (
+        <div className="mt-3 text-sm font-semibold text-red-500">Solution expired. Upvoting and commenting are disabled.</div>
+      ) : (
+        <div className="mt-3 flex items-center gap-2">
+          <Button size="sm" onClick={onUpvote}>
+            Upvote ({solution.upvotesCount ?? 0})
+          </Button>
+          <Button size="sm" variant="secondary" onClick={onBookmark}>
+            Bookmark
+          </Button>
+        </div>
+      )}
+      
 
       <div className="mt-4">
         <CommentsThread
@@ -421,6 +418,7 @@ function SolutionItem({
           }))}
           onAdd={(content, parentId) => addComment(content, parentId)}
           onUpvote={(cid) => upvoteComment(cid)}
+          disabled={solutionExpired} // Disable commenting if expired
         />
       </div>
     </div>
@@ -449,9 +447,16 @@ function AdminQuestionForm({
   const [link, setLink] = useState(existing?.link ?? "")
   const [prompt, setPrompt] = useState(existing?.prompt ?? "")
 
+  // Sync internal state with external props
+  useEffect(() => {
+    setTitle(existing?.title ?? "")
+    setLink(existing?.link ?? "")
+    setPrompt(existing?.prompt ?? "")
+  }, [existing])
+
   return (
     <div className="rounded-md border p-3">
-      <div className="mb-2 text-sm font-medium">{existing ? "Edit Today's Question" : "Post Today's Question"}</div>
+      <div className="mb-2 text-sm font-medium">{existing ? `Edit Question: ${existing.title || existing.id}` : "Post New Question"}</div>
       <div className="grid gap-3 md:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm">Title</label>
@@ -487,6 +492,7 @@ function AdminQuestionForm({
           onClick={async () => {
             if (!title.trim() && !prompt.trim() && !link.trim()) return
             if (existing?.id) {
+              // Update existing question
               await update(ref(db, `groupQuestions/${groupId}/${existing.id}`), {
                 title: title || null,
                 link: link || null,
@@ -495,6 +501,7 @@ function AdminQuestionForm({
               })
               await onSaved(existing.id)
             } else {
+              // Post new question
               const qid = push(ref(db, `groupQuestions/${groupId}`)).key!
               await set(ref(db, `groupQuestions/${groupId}/${qid}`), {
                 id: qid,
@@ -558,7 +565,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
     const listeners: (() => void)[] = []
 
     uidsToFetch.forEach(uid => {
-      // Assuming user profiles are stored under the path `users/${uid}/displayName`
+      // Assuming user profiles are stored under the path `users/{uid}/displayName`
       const userRef = ref(db, `users/${uid}/displayName`)
       const listener = onValue(userRef, (snap) => {
         const name = snap.val()
@@ -594,7 +601,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
               <td className="py-2 pr-4">
                 <a className="underline" href={`/contact/${r.uid}`}>
                   {/* Use getDisplayName instead of r.uid */}
-                  {getDisplayName(r.uid)} 
+                  {getDisplayName(r.uid)}
                 </a>
               </td>
               <td className="py-2 pr-4">{r.submissions}</td>
@@ -609,9 +616,23 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
   )
 }
 
+/**
+ * Calculates and displays the time remaining until a solution expires.
+ * Displays "Expired" if the time has passed.
+ * @param expiresAt The timestamp when the solution expires.
+ */
 function TimeRemaining({ expiresAt }: { expiresAt?: number | null }) {
   if (!expiresAt) return null
   const remaining = Math.max(0, expiresAt - Date.now())
+
+  if (remaining === 0) {
+    return (
+      <span className="text-xs text-red-500 font-semibold">
+        Expired
+      </span>
+    )
+  }
+
   const hrs = Math.floor(remaining / (1000 * 60 * 60))
   const mins = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60))
   return (

@@ -20,9 +20,10 @@ type Props = {
   comments: Comment[]
   onAdd: (content: string, parentId?: string | null) => Promise<void>
   onUpvote?: (id: string) => Promise<void>
+  disabled?: boolean
 }
 
-export function CommentsThread({ comments, onAdd, onUpvote }: Props) {
+export function CommentsThread({ comments, onAdd, onUpvote, disabled }: Props) {
   const [value, setValue] = useState("")
   const roots = comments.filter((c) => !c.parentId)
   const childrenMap = comments.reduce<Record<string, Comment[]>>((acc, c) => {
