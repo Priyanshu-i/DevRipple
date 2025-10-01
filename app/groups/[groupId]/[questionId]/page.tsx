@@ -567,6 +567,14 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
 
   const [userNames, setUserNames] = useState<NameMap>({})
 
+  const Names = Object.entries(stats || {}).map(([uid, s]: any) => ({
+    uid,
+    submissions: s.submissions || 0,
+    lastSubmissionAt: s.lastSubmissionAt || 0,
+  }))
+    Names.sort((a, b) => b.submissions - a.submissions || b.lastSubmissionAt - a.lastSubmissionAt)
+
+
   const rows = useMemo(() => {
     if (!stats) return []
     
@@ -640,25 +648,23 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
         </div>
       </div>
 
-      {rows.length ? (
+      {Names.length ? (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-muted-foreground">
                 <th className="py-2 pr-4">User</th>
-                <th className="py-2 pr-4">Submissions</th>
                 <th className="py-2">Last submission</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {Names.map((r) => (
                 <tr key={r.uid} className="border-t">
                   <td className="py-2 pr-4">
                     <a className="underline" href={`/contact/${r.uid}`}>
                       {getDisplayName(r.uid)} 
                     </a>
                   </td>
-                  <td className="py-2 pr-4">{r.submissions}</td>
                   <td className="py-2">{r.lastSubmissionAt ? new Date(r.lastSubmissionAt).toLocaleString() : "-"}</td>
                 </tr>
               ))}
