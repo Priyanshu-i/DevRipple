@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app"
 import { getAuth, GoogleAuthProvider } from "firebase/auth"
 import { getDatabase } from "firebase/database"
+import { isSupported, getAnalytics } from "firebase/analytics";
 
 let app: FirebaseApp
 
@@ -14,6 +15,7 @@ export function getFirebaseApp() {
       storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
       messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+      measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
     }
     if (!config.apiKey || !config.authDomain || !config.databaseURL || !config.projectId || !config.appId) {
       // Fail fast in preview to indicate missing configuration; UI still renders
@@ -28,3 +30,12 @@ export const firebaseApp = getFirebaseApp()
 export const auth = getAuth(firebaseApp)
 export const googleProvider = new GoogleAuthProvider()
 export const db = getDatabase(firebaseApp)
+
+if (typeof window !== "undefined") {
+  isSupported().then((supported) => {
+    if (supported) {
+      const analytics = getAnalytics(app);
+      // Safe to use analytics here
+    }
+  });
+}

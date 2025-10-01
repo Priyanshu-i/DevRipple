@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { CodeViewer } from "@/components/solution/code-viewer"
 import { CommentsThread } from "@/components/solution/comments-thread"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 // import { GroupInfoPage } from "@/components/groups/info" // Not used here, but kept in imports
@@ -19,6 +19,19 @@ interface Group {
   name: string
   description?: string
   adminUid: string
+}
+type Comment = {
+  id: string
+  author: string
+  content: string
+  createdAt: number // Use Date for display in a real app, but sticking to number for now
+  upvotes?: number
+  parentId?: string | null
+}
+
+type RTDBComment = Comment & {
+  authorUid: string
+  lineNumber?: number // Added for inline comments
 }
 
 interface Question {
@@ -39,7 +52,7 @@ interface Solution {
   language: string
   authorName: string
   expiresAt?: number
-  // localOnly removed
+  
 }
 
 export default function GroupQuestionPage() {
@@ -81,7 +94,6 @@ export default function GroupQuestionPage() {
 
   const isAdmin = user && group?.adminUid === user.uid
   
-  // solutions is now `mergedSolutions` but without local storage logic
   const mergedSolutions = solutions || []
 
   /**
@@ -89,11 +101,11 @@ export default function GroupQuestionPage() {
    * Uses paths.solutionBookmarks
    * @param solutionId The ID of the solution.
    */
-  async function toggleBookmark(solutionId: string) {
-    if (!user || !groupId || !questionId) return
-    const bmRef = ref(db, paths.solutionBookmarks(groupId, questionId, solutionId, user.uid))
-    await runTransaction(bmRef, (curr) => (curr ? null : true))
-  }
+  // async function toggleBookmark(solutionId: string) {
+  //   if (!user || !groupId || !questionId) return
+  //   const bmRef = ref(db, paths.solutionBookmarks(groupId, questionId, solutionId, user.uid))
+  //   await runTransaction(bmRef, (curr) => (curr ? null : true))
+  // }
 
   /**
    * Toggles the upvote status for a solution and updates the count.
@@ -134,7 +146,7 @@ export default function GroupQuestionPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-4 flex items-center justify-between">
-        <Link href={`/groups/${groupId}/info`} className="text-inherit hover:text-inherit">
+        <Link href={`/groups/${groupId}`} className="text-inherit hover:text-inherit">
           <h1 className="text-2xl font-semibold">{group?.name ?? "Group"}</h1>
         </Link>
         {/* Note: The submission path might need to be `/groups/${groupId}/${questionId}/submit` depending on the route setup */}
@@ -225,7 +237,7 @@ export default function GroupQuestionPage() {
               userUid={user?.uid ?? null}
               solution={s}
               onUpvote={() => toggleUpvote(s.id)}
-              onBookmark={() => toggleBookmark(s.id)}
+              // onBookmark={() => toggleBookmark(s.id)}
             />
           ))
         ) : (
@@ -248,7 +260,7 @@ function SolutionItem({
   userUid,
   solution,
   onUpvote,
-  onBookmark,
+  // onBookmark,
 }: {
   groupId: string
   questionId: string
@@ -256,34 +268,62 @@ function SolutionItem({
   userUid: string | null
   solution: any
   onUpvote: () => void
-  onBookmark: () => void
+  // onBookmark: () => void
 }) {
   // Fetch comments using the new path structure
-  const { data: comments = [] } = useSWRSubscription(
-    solution?.id ? paths.solutionComments(groupId, questionId, solution.id) : null,
-    (key, { next }) => {
-      const unsub = onValue(ref(db, key), (snap) => {
-        const val = snap.val() || {}
-        const arr = Object.values(val) as any[]
-        arr.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-        next(null, arr)
-      })
-      return () => unsub()
-    },
-  )
+const { data: allComments = [] } = useSWRSubscription(
+  solution?.id ? paths.solutionComments(groupId, questionId, solution.id) : null,
+  (key, { next }) => {
+    const unsub = onValue(ref(db, key), (snap) => {
+      const val = snap.val() || {}
+      // Convert object to array of RTDBComment
+      const arr: RTDBComment[] = Object.values(val)
+      // Sort by creation time (important for the thread structure)
+      arr.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+      next(null, arr)
+    })
+    return () => unsub()
+  },
+)
 
-  const inline = (comments as any[])
-    .filter((c: any) => c.lineNumber) // Only include comments with a line number
-    .reduce<Record<number, Array<{ id: string; text: string; author: string }>>>(
-      (acc, c: any) => {
+  /**
+   * Filter and Memoize the General Comments for the CommentsThread component.
+   * We exclude any comments that have a lineNumber (inline comments).
+  */
+  const generalComments = useMemo(() => {
+      return (allComments as RTDBComment[])
+          .filter((c) => !c.lineNumber) // <-- KEY CHANGE: Filter out inline comments
+          .map((c) => ({
+              // Map to the exact Comment type required by the CommentsThread component
+              id: c.id,
+              author: c.author,
+              content: c.content,
+              createdAt: c.createdAt,
+              upvotes: c.upvotes,
+              parentId: c.parentId || null,
+          }))
+          // Ensure all top-level comments and their direct replies are included.
+          // The sorting for the thread display is handled inside CommentsThread.
+  }, [allComments])
+
+  // =========================================================================
+// 2. INLINE COMMENT SEPARATION (For existing functionality)
+// =========================================================================
+
+const inlineCommentsMap = useMemo(() => {
+  return (allComments as RTDBComment[])
+    .filter((c) => c.lineNumber) // <-- Only include comments with a line number
+    .reduce<Record<number, Array<{ id: string; content: string; author: string }>>>(
+      (acc, c) => {
         if (c.lineNumber) {
           acc[c.lineNumber] = acc[c.lineNumber] || []
-          acc[c.lineNumber].push({ id: c.id, text: c.content, author: c.author })
+          acc[c.lineNumber].push({ id: c.id, content: c.content, author: c.author })
         }
         return acc
       },
       {},
     )
+}, [allComments])
 
   /**
    * Adds an inline comment to a specific line number.
@@ -292,21 +332,22 @@ function SolutionItem({
    * @param text The content of the comment.
    */
   async function addInlineComment(line: number, text: string) {
-    if (!userUid) return
-    const commentRef = ref(db, paths.solutionComments(groupId, questionId, solution.id))
-    const cid = push(commentRef).key!
+  if (!userUid) return
+  const commentRef = ref(db, paths.solutionComments(groupId, questionId, solution.id))
+  const newCommentRef = push(commentRef) // Generate a unique ID first
+  const cid = newCommentRef.key!
 
-    await set(ref(db, `${commentRef.key}/${cid}`), {
-      id: cid,
-      author: userDisplayName,
-      authorUid: userUid,
-      content: text,
-      createdAt: serverTimestamp(),
-      parentId: null,
-      lineNumber: line,
-      upvotes: 0,
-    })
-  }
+  await set(newCommentRef, {
+    id: cid,
+    author: userDisplayName,
+    authorUid: userUid,
+    content: text,
+    createdAt: serverTimestamp(),
+    parentId: null, // Inline comments are always root in the thread hierarchy
+    lineNumber: line, // <-- KEY: This flags it as an inline comment
+    upvotes: 0,
+  })
+}
 
   /**
    * Adds a root or nested comment.
@@ -315,20 +356,22 @@ function SolutionItem({
    * @param parentId The ID of the parent comment, or null for a root comment.
    */
   async function addComment(content: string, parentId?: string | null) {
-    if (!userUid) return
-    const commentRef = ref(db, paths.solutionComments(groupId, questionId, solution.id))
-    const cid = push(commentRef).key!
+  if (!userUid) return
+  const commentRef = ref(db, paths.solutionComments(groupId, questionId, solution.id))
+  const newCommentRef = push(commentRef)
+  const cid = newCommentRef.key!
 
-    await set(ref(db, `${commentRef.key}/${cid}`), {
-      id: cid,
-      author: userDisplayName,
-      authorUid: userUid,
-      content,
-      createdAt: serverTimestamp(),
-      parentId: parentId || null,
-      upvotes: 0,
-    })
-  }
+  await set(newCommentRef, {
+    id: cid,
+    author: userDisplayName,
+    authorUid: userUid,
+    content,
+    createdAt: serverTimestamp(),
+    parentId: parentId || null, // null for root, ID for reply
+    upvotes: 0,
+    // Note: No lineNumber field, so it is considered a general comment
+  })
+}
 
   /**
    * Upvotes a specific comment.
@@ -336,11 +379,13 @@ function SolutionItem({
    * @param commentId The ID of the comment to upvote.
    */
   async function upvoteComment(commentId: string) {
-    // Construct the path: ephemeralSubmissions/{groupId}/{questionId}/{solutionId}/comments/{commentId}/upvotes
-    const path = `${paths.solutionComments(groupId, questionId, solution.id)}/${commentId}/upvotes`
-    const countRef = ref(db, path)
-    await runTransaction(countRef, (curr) => (typeof curr === "number" ? curr + 1 : 1))
-  }
+  // Path to the 'upvotes' field on the comment document
+  const path = `${paths.solutionComments(groupId, questionId, solution.id)}/${commentId}/upvotes`
+  const countRef = ref(db, path)
+  
+  // Atomically increment the upvote count
+  await runTransaction(countRef, (curr) => (typeof curr === "number" ? curr + 1 : 1))
+}
 
   const solutionExpired = solution.expiresAt && solution.expiresAt < Date.now()
 
@@ -370,7 +415,7 @@ function SolutionItem({
         <CodeViewer
           code={solution.code}
           language={solution.language}
-          inlineComments={inline}
+          // inlineComments={inline}
           onAddInlineComment={addInlineComment}
         />
       </div>
@@ -399,26 +444,18 @@ function SolutionItem({
           <Button size="sm" onClick={onUpvote}>
             Upvote ({solution.upvotesCount ?? 0})
           </Button>
-          <Button size="sm" variant="secondary" onClick={onBookmark}>
+          {/* <Button size="sm" variant="secondary" onClick={onBookmark}>
             Bookmark
-          </Button>
+          </Button> */}
         </div>
       )}
       
 
       <div className="mt-4">
         <CommentsThread
-          comments={(comments as any[]).map((c: any) => ({
-            id: c.id,
-            author: c.author,
-            content: c.content,
-            createdAt: c.createdAt,
-            upvotes: c.upvotes ?? 0,
-            parentId: c.parentId || null,
-          }))}
-          onAdd={(content, parentId) => addComment(content, parentId)}
-          onUpvote={(cid) => upvoteComment(cid)}
-          disabled={solutionExpired} // Disable commenting if expired
+          comments={generalComments} // <-- Pass the filtered list of general comments
+          onAdd={addComment}       // <-- Use the function for general comments/replies
+          onUpvote={upvoteComment}
         />
       </div>
     </div>
