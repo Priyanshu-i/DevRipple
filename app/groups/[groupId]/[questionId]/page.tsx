@@ -97,17 +97,6 @@ export default function GroupQuestionPage() {
   const mergedSolutions = solutions || []
 
   /**
-   * Toggles the bookmark status for a solution.
-   * Uses paths.solutionBookmarks
-   * @param solutionId The ID of the solution.
-   */
-  // async function toggleBookmark(solutionId: string) {
-  //   if (!user || !groupId || !questionId) return
-  //   const bmRef = ref(db, paths.solutionBookmarks(groupId, questionId, solutionId, user.uid))
-  //   await runTransaction(bmRef, (curr) => (curr ? null : true))
-  // }
-
-  /**
    * Toggles the upvote status for a solution and updates the count.
    * Uses paths.solutionUpvotes
    * @param solutionId The ID of the solution.
@@ -374,18 +363,31 @@ const inlineCommentsMap = useMemo(() => {
 }
 
   /**
-   * Upvotes a specific comment.
-   * Uses a direct path to the comment's upvotes field.
+   * Upvotes a specific comment - FIXED to prevent multiple upvotes per user.
+   * Uses a path structure to track individual user upvotes.
    * @param commentId The ID of the comment to upvote.
    */
   async function upvoteComment(commentId: string) {
-  // Path to the 'upvotes' field on the comment document
-  const path = `${paths.solutionComments(groupId, questionId, solution.id)}/${commentId}/upvotes`
-  const countRef = ref(db, path)
-  
-  // Atomically increment the upvote count
-  await runTransaction(countRef, (curr) => (typeof curr === "number" ? curr + 1 : 1))
-}
+    if (!userUid) return
+    
+    // Path to track if this user has upvoted this comment
+    const userUpvotePath = `${paths.solutionComments(groupId, questionId, solution.id)}/${commentId}/userUpvotes/${userUid}`
+    const userUpvoteRef = ref(db, userUpvotePath)
+    
+    // Toggle the user's upvote status
+    const res = await runTransaction(userUpvoteRef, (curr) => (curr ? null : true))
+    const nowValue = res.snapshot.val()
+    const added = !!nowValue
+    
+    // Update the upvotes count based on whether we added or removed the upvote
+    const countPath = `${paths.solutionComments(groupId, questionId, solution.id)}/${commentId}/upvotes`
+    const countRef = ref(db, countPath)
+    
+    await runTransaction(countRef, (curr) => {
+      const base = typeof curr === "number" ? curr : 0
+      return added ? base + 1 : Math.max(0, base - 1)
+    })
+  }
 
   const solutionExpired = solution.expiresAt && solution.expiresAt < Date.now()
 
