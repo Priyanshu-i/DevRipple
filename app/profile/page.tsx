@@ -9,67 +9,124 @@ import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
 import { ProfileForm } from "@/components/profile/profile-form"
 import { NotificationsPanel } from "@/components/notifications/notifications-panel"
+import { paths } from "@/lib/paths"
 
-// Define a type for fetched names (Group or Submission Title)
+// --- TYPES ---
+
 interface NameMap {
   [id: string]: string
 }
 
+interface SubmissionIndex {
+  [solutionId: string]: {
+    groupId: string
+    questionId: string
+  }
+}
+
+interface UserProfile {
+  preferredLanguage?: string
+  github?: string
+  leetcode?: string
+  displayName?: string
+  username?: string
+  bio?: string
+  linkedin?: string
+  website?: string
+}
+
+interface UserGroups {
+  [groupId: string]: boolean
+}
+
+type NextCallback<T> = { next: (err: any, data: T) => void }
+
+// --- COMPONENT ---
+
 export default function ProfilePage() {
   const { user } = useAuth()
-  const { data: profile } = useSWRSubscription(user ? `users/${user.uid}` : null, (key, { next }) => {
-    if (!user) return
-    const unsub = onValue(ref(db, key), (snap) => next(null, snap.val()))
-    return () => unsub()
-  })
-
-  // Fetches the IDs of groups the user belongs to
-  const { data: userGroups } = useSWRSubscription(user ? `userGroups/${user.uid}` : null, (key, { next }) => {
-    const unsub = onValue(ref(db, key), (snap) => next(null, snap.val() || {}))
-    return () => unsub()
-  })
-
-  // Fetches the IDs of submissions authored by the user
-  const { data: authoredIndex } = useSWRSubscription(user ? `indexByAuthor/${user.uid}` : null, (key, { next }) => {
-    const unsub = onValue(ref(db, key), (snap) => next(null, snap.val() || {}))
-    return () => unsub()
-  })
-
-  const [language, setLanguage] = useState(profile?.preferredLanguage ?? "")
-  const [github, setGithub] = useState(profile?.github ?? "")
-  const [leetcode, setLeetcode] = useState(profile?.leetcode ?? "")
   
-  // New state for storing names
+  // 1. Profile Data Subscription (users/{uid})
+  const { data: profile } = useSWRSubscription<UserProfile>(
+    user ? paths.user(user.uid) : null,
+    (key: string, { next }: NextCallback<UserProfile>) => {
+      if (!user) return
+      console.log("📊 Subscribing to profile at:", key)
+      const unsub = onValue(ref(db, key), (snap) => {
+        const data = snap.val() as UserProfile
+        console.log("📊 Profile data received:", data)
+        next(null, data)
+      })
+      return () => unsub()
+    }
+  )
+
+  // 2. User Groups Subscription (userGroups/{uid})
+  const { data: userGroups } = useSWRSubscription<UserGroups>(
+    user ? paths.userGroups(user.uid) : null,
+    (key: string, { next }: NextCallback<UserGroups>) => {
+      console.log("📊 Subscribing to userGroups at:", key)
+      const unsub = onValue(ref(db, key), (snap) => {
+        const data = (snap.val() || {}) as UserGroups
+        console.log("📊 UserGroups data received:", data)
+        next(null, data)
+      })
+      return () => unsub()
+    }
+  )
+
+  // 3. Authored Submissions Index Subscription
+  const { data: authoredIndex } = useSWRSubscription<SubmissionIndex>(
+    user ? `indexByAuthor/${user.uid}` : null,
+    (key: string, { next }: NextCallback<SubmissionIndex>) => {
+      console.log("📊 Subscribing to authoredIndex at:", key)
+      const unsub = onValue(ref(db, key), (snap) => {
+        const data = (snap.val() || {}) as SubmissionIndex
+        console.log("📊 AuthoredIndex data received:", data)
+        next(null, data)
+      })
+      return () => unsub()
+    }
+  )
+
+  const [language, setLanguage] = useState("")
+  const [github, setGithub] = useState("")
+  const [leetcode, setLeetcode] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState("")
+  
   const [groupNames, setGroupNames] = useState<NameMap>({})
   const [submissionNames, setSubmissionNames] = useState<NameMap>({})
 
+  // Sync local state with profile data
   useEffect(() => {
     if (profile) {
+      console.log("🔄 Syncing local state with profile:", profile)
       setLanguage(profile.preferredLanguage ?? "")
       setGithub(profile.github ?? "")
       setLeetcode(profile.leetcode ?? "")
     }
   }, [profile])
   
-  // --- Effect to Fetch Group Names ---
+  // Fetch Group Names
   useEffect(() => {
     if (!userGroups || Object.keys(userGroups).length === 0) return
 
     const groupIdsToFetch = Object.keys(userGroups).filter(gid => !groupNames[gid])
     if (groupIdsToFetch.length === 0) return
 
+    console.log("🔍 Fetching group names for:", groupIdsToFetch)
     const listeners: (() => void)[] = []
 
     groupIdsToFetch.forEach(gid => {
-      // Assuming groups are stored under the path `groups/${groupId}`
-      const groupRef = ref(db, `groups/${gid}/name`)
+      const groupRef = ref(db, `${paths.group(gid)}/name`)
       const listener = onValue(groupRef, (snap) => {
-        const name = snap.val()
-        if (name) {
-          setGroupNames(prev => ({ ...prev, [gid]: name }))
-        } else {
-          setGroupNames(prev => ({ ...prev, [gid]: "Group (Deleted/Unknown)" }))
-        }
+        const name = snap.val() as string
+        console.log(`📝 Group ${gid} name:`, name)
+        setGroupNames(prev => ({ 
+          ...prev, 
+          [gid]: name || "Group (Deleted/Unknown)" 
+        }))
       })
       listeners.push(listener)
     })
@@ -77,31 +134,35 @@ export default function ProfilePage() {
     return () => {
       listeners.forEach(unsub => unsub())
     }
-  }, [userGroups, groupNames]) // Add groupNames to dependency to avoid re-fetching loaded ones
+  }, [userGroups, groupNames])
 
-
-  // --- Effect to Fetch Submission Names (Titles) ---
+  // Fetch Submission Names
   useEffect(() => {
     if (!authoredIndex || Object.keys(authoredIndex).length === 0) return
     
-    // Only fetch for the first 5 submissions displayed
     const submissionIds = Object.keys(authoredIndex).slice(0, 5)
-    const submissionIdsToFetch = submissionIds.filter(sid => !submissionNames[sid])
+    const submissionsToFetch = submissionIds
+      .filter(sid => !submissionNames[sid])
+      .map(sid => ({ sid, ...authoredIndex[sid] }))
     
-    if (submissionIdsToFetch.length === 0) return
+    if (submissionsToFetch.length === 0) return
 
+    console.log("🔍 Fetching submission names for:", submissionsToFetch)
     const listeners: (() => void)[] = []
 
-    submissionIdsToFetch.forEach(sid => {
-      // Assuming submissions/solutions are stored under `solutions/${solutionId}/title`
-      const solutionRef = ref(db, `solutions/${sid}/title`)
+    submissionsToFetch.forEach(({ sid, groupId, questionId }) => {
+      const solutionPath = paths.solutionDocument(groupId, questionId, sid)
+      const solutionRef = ref(db, `${solutionPath}/title`)
+      
+      console.log(`🔍 Fetching title for submission ${sid} at:`, `${solutionPath}/title`)
+      
       const listener = onValue(solutionRef, (snap) => {
-        const title = snap.val()
-        if (title) {
-          setSubmissionNames(prev => ({ ...prev, [sid]: title }))
-        } else {
-          setSubmissionNames(prev => ({ ...prev, [sid]: "Submission (Deleted/Unknown)" }))
-        }
+        const title = snap.val() as string
+        console.log(`📝 Submission ${sid} title:`, title)
+        setSubmissionNames(prev => ({ 
+          ...prev, 
+          [sid]: title || "Submission (Deleted/Unknown)" 
+        }))
       })
       listeners.push(listener)
     })
@@ -109,15 +170,50 @@ export default function ProfilePage() {
     return () => {
       listeners.forEach(unsub => unsub())
     }
-  }, [authoredIndex, submissionNames]) // Add submissionNames to dependency to avoid re-fetching loaded ones
+  }, [authoredIndex, submissionNames])
 
+  // Save user preferences
+  const handleSavePreferences = async () => {
+    if (!user) {
+      console.error("❌ No user found")
+      window.alert("Error: User not authenticated")
+      return
+    }
+    
+    setIsSaving(true)
+    setSaveMessage("")
+    
+    const updateData = {
+      preferredLanguage: language,
+      github: github,
+      leetcode: leetcode
+    }
+    
+    const userPath = paths.user(user.uid)
+    console.log("💾 Saving preferences to:", userPath)
+    console.log("💾 Update data:", updateData)
+    
+    try {
+      await update(ref(db, userPath), updateData)
+      console.log("✅ Preferences saved successfully!")
+      setSaveMessage("Preferences saved successfully! 🎉")
+      window.alert("✅ Profile updated successfully!")
+    } catch (error) {
+      console.error("❌ Error updating user preferences:", error)
+      setSaveMessage(`Failed to save: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      window.alert(`❌ Failed to update profile:\n${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsSaving(false)
+      setTimeout(() => setSaveMessage(""), 5000)
+    }
+  }
 
-  if (!user) return <main className="mx-auto max-w-3xl px-4 py-8">Sign in to view your profile.</main>
+  if (!user) {
+    console.log("⚠️ No user authenticated")
+    return <main className="mx-auto max-w-3xl px-4 py-8">Sign in to view your profile.</main>
+  }
 
-  // Function to get Group Name or fall back to ID
   const getGroupName = (gid: string) => groupNames[gid] || gid
-  
-  // Function to get Submission Name/Title or fall back to ID
   const getSubmissionName = (sid: string) => submissionNames[sid] || sid
   
   return (
@@ -150,7 +246,11 @@ export default function ProfilePage() {
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm">Preferred Language</label>
-              <Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="e.g., C++, Python" />
+              <Input 
+                value={language} 
+                onChange={(e) => setLanguage(e.target.value)} 
+                placeholder="e.g., C++, Python" 
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm">GitHub URL</label>
@@ -168,14 +268,18 @@ export default function ProfilePage() {
                 placeholder="https://leetcode.com/yourname"
               />
             </div>
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between">
+              {saveMessage && (
+                <p className={`text-sm ${saveMessage.includes("Failed") ? 'text-red-500' : 'text-green-500'}`}>
+                  {saveMessage}
+                </p>
+              )}
               <Button
-                onClick={async () => {
-                  if (!user) return
-                  await update(ref(db, `users/${user.uid}`), { preferredLanguage: language, github, leetcode })
-                }}
+                onClick={handleSavePreferences}
+                disabled={isSaving}
+                className="ml-auto"
               >
-                Save
+                {isSaving ? "Saving..." : "Save Preferences"}
               </Button>
             </div>
           </div>
@@ -223,7 +327,6 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          {/* --- Updated Your Groups Section --- */}
           <div className="rounded-md border p-4">
             <div className="mb-3 text-sm font-medium">Your Groups</div>
             {userGroups && Object.keys(userGroups).length ? (
@@ -231,7 +334,6 @@ export default function ProfilePage() {
                 {Object.keys(userGroups).map((gid) => (
                   <li key={gid}>
                     <a href={`/groups/${gid}`} className="underline">
-                      {/* Use getGroupName to display the name */}
                       {getGroupName(gid)}
                     </a>
                   </li>
@@ -242,9 +344,8 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* --- Updated Your Submissions Section --- */}
           <div className="rounded-md border p-4">
-            <div className="mb-3 text-sm font-medium">Your Submissions</div>
+            <div className="mb-3 text-sm font-medium">Your Submissions (Last 5)</div>
             {authoredIndex && Object.keys(authoredIndex).length ? (
               <ul className="space-y-2">
                 {Object.keys(authoredIndex)
@@ -252,7 +353,6 @@ export default function ProfilePage() {
                   .map((sid) => (
                     <li key={sid} className="text-sm">
                       <a href={`/search?solution=${sid}`} className="underline">
-                        {/* Use getSubmissionName to display the title/name */}
                         {getSubmissionName(sid)}
                       </a>
                     </li>
