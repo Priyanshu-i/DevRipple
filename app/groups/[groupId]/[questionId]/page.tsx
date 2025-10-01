@@ -236,7 +236,7 @@ export default function GroupQuestionPage() {
 
       <section className="mt-10">
         <h2 className="text-lg font-medium">Leaderboard</h2>
-        <GroupLeaderboard groupId={groupId} />
+        <GroupLeaderboard groupId={groupId}  />
       </section>
     </main>
   )
@@ -604,7 +604,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
     const listeners: (() => void)[] = []
 
     uidsToFetch.forEach(uid => {
-      // Assuming user profiles are stored under the path `users/{uid}/displayName`
+      // Assuming user profiles are stored under the path `users/${uid}/displayName`
       const userRef = ref(db, `users/${uid}/displayName`)
       const listener = onValue(userRef, (snap) => {
         const name = snap.val()
@@ -640,7 +640,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
               <td className="py-2 pr-4">
                 <a className="underline" href={`/contact/${r.uid}`}>
                   {/* Use getDisplayName instead of r.uid */}
-                  {getDisplayName(r.uid)}
+                  {getDisplayName(r.uid)} 
                 </a>
               </td>
               <td className="py-2 pr-4">{r.submissions}</td>
