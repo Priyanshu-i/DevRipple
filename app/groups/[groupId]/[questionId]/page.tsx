@@ -14,6 +14,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 // import { GroupInfoPage } from "@/components/groups/info" // Not used here, but kept in imports
 import { paths } from "@/lib/paths"
+import { ChevronDown, ChevronRight, MessageSquare } from "lucide-react"
 
 interface Group {
   name: string
@@ -53,6 +54,44 @@ interface Solution {
   authorName: string
   expiresAt?: number
   
+}
+
+function CollapsibleSection({
+  title,
+  count,
+  defaultOpen = false,
+  children,
+  className = "",
+}: {
+  title: React.ReactNode
+  count?: number
+  defaultOpen?: boolean
+  children: React.ReactNode
+  className?: string
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+  const Icon = isOpen ? ChevronDown : ChevronRight
+
+  return (
+    <div className={className}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between text-left text-sm font-medium focus:outline-none"
+      >
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4 text-primary" />
+          {title}
+        </div>
+        {count !== undefined && (
+          <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+            <MessageSquare className="h-3 w-3" />
+            {count}
+          </div>
+        )}
+      </button>
+      {isOpen && <div className="mt-2">{children}</div>}
+    </div>
+  )
 }
 
 export default function GroupQuestionPage() {
@@ -244,7 +283,7 @@ export default function GroupQuestionPage() {
 
 function SolutionItem({
   groupId,
-  questionId, // New prop
+  questionId,
   userDisplayName,
   userUid,
   solution,
@@ -261,38 +300,38 @@ function SolutionItem({
 }) {
   // Fetch comments using the new path structure
 const { data: allComments = [] } = useSWRSubscription(
-  solution?.id ? paths.solutionComments(groupId, questionId, solution.id) : null,
-  (key, { next }) => {
-    const unsub = onValue(ref(db, key), (snap) => {
-      const val = snap.val() || {}
-      // Convert object to array of RTDBComment
-      const arr: RTDBComment[] = Object.values(val)
-      // Sort by creation time (important for the thread structure)
-      arr.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-      next(null, arr)
-    })
-    return () => unsub()
-  },
-)
+    solution?.id ? paths.solutionComments(groupId, questionId, solution.id) : null,
+    (key, { next }) => {
+      const unsub = onValue(ref(db, key), (snap) => {
+        const val = snap.val() || {}
+        // Convert object to array of RTDBComment
+        const arr: RTDBComment[] = Object.values(val)
+        // Sort by creation time (important for the thread structure)
+        arr.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+        next(null, arr)
+      })
+      return () => unsub()
+    },
+  )
 
   /**
    * Filter and Memoize the General Comments for the CommentsThread component.
    * We exclude any comments that have a lineNumber (inline comments).
   */
   const generalComments = useMemo(() => {
-      return (allComments as RTDBComment[])
-          .filter((c) => !c.lineNumber) // <-- KEY CHANGE: Filter out inline comments
-          .map((c) => ({
-              // Map to the exact Comment type required by the CommentsThread component
-              id: c.id,
-              author: c.author,
-              content: c.content,
-              createdAt: c.createdAt,
-              upvotes: c.upvotes,
-              parentId: c.parentId || null,
-          }))
-          // Ensure all top-level comments and their direct replies are included.
-          // The sorting for the thread display is handled inside CommentsThread.
+    return (allComments as RTDBComment[])
+      .filter((c) => !c.lineNumber) // <-- KEY CHANGE: Filter out inline comments
+      .map((c) => ({
+        // Map to the exact Comment type required by the CommentsThread component
+        id: c.id,
+        author: c.author,
+        content: c.content,
+        createdAt: c.createdAt,
+        upvotes: c.upvotes,
+        parentId: c.parentId || null,
+      }))
+    // Ensure all top-level comments and their direct replies are included.
+    // The sorting for the thread display is handled inside CommentsThread.
   }, [allComments])
 
   // =========================================================================
@@ -300,19 +339,19 @@ const { data: allComments = [] } = useSWRSubscription(
 // =========================================================================
 
 const inlineCommentsMap = useMemo(() => {
-  return (allComments as RTDBComment[])
-    .filter((c) => c.lineNumber) // <-- Only include comments with a line number
-    .reduce<Record<number, Array<{ id: string; content: string; author: string }>>>(
-      (acc, c) => {
-        if (c.lineNumber) {
-          acc[c.lineNumber] = acc[c.lineNumber] || []
-          acc[c.lineNumber].push({ id: c.id, content: c.content, author: c.author })
-        }
-        return acc
-      },
-      {},
-    )
-}, [allComments])
+    return (allComments as RTDBComment[])
+      .filter((c) => c.lineNumber) // <-- Only include comments with a line number
+      .reduce<Record<number, Array<{ id: string; content: string; author: string }>>>(
+        (acc, c) => {
+          if (c.lineNumber) {
+            acc[c.lineNumber] = acc[c.lineNumber] || []
+            acc[c.lineNumber].push({ id: c.id, content: c.content, author: c.author })
+          }
+          return acc
+        },
+        {},
+      )
+  }, [allComments])
 
   /**
    * Adds an inline comment to a specific line number.
@@ -391,75 +430,96 @@ const inlineCommentsMap = useMemo(() => {
 
   const solutionExpired = solution.expiresAt && solution.expiresAt < Date.now()
 
+  // Use the combined length of all comments (general + inline) for the count
+  const totalCommentCount = allComments.length
+
   return (
-    <div className={`rounded-md border p-3 ${solutionExpired ? 'opacity-50' : ''}`}>
-      <div className="mb-2 flex items-center justify-between text-sm">
-        <div className="flex items-center gap-2">
-          <div className="font-medium">{solution.authorName}</div>
-          {/* Local copy tag removed as local storage logic is gone */}
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="text-xs text-muted-foreground">{solution.language}</div>
-          <TimeRemaining expiresAt={solution.expiresAt} />
-        </div>
-      </div>
-      <div className="text-sm text-muted-foreground">
-        {solution.problemLink ? (
-          <a href={solution.problemLink} target="_blank" rel="noreferrer" className="underline">
-            Problem Link
-          </a>
-        ) : (
-          "Custom assignment"
-        )}
-      </div>
+    // Wrap the entire solution item in a div for the border and padding
+    <div className={`rounded-md border p-3 ${solutionExpired ? "opacity-50" : ""}`}>
+      {/* COLLAPSIBLE SOLUTION CONTAINER */}
+      <CollapsibleSection
+        title={
+          <span className="text-base font-semibold">
+            Solution by {solution.authorName}
+            <span className="ml-2 text-sm text-muted-foreground font-normal">
+              ({solution.language}, {solution.upvotesCount ?? 0} Upvotes)
+            </span>
+          </span>
+        }
+        defaultOpen={false} // Default to open so users see content initially
+      >
+        {/* Solution details section */}
+        <div className="text-sm border-t pt-2 mt-2">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-3">
+              <div className="text-xs text-muted-foreground">{solution.language}</div>
+              <TimeRemaining expiresAt={solution.expiresAt} />
+            </div>
+          </div>
+          <div className="text-sm text-muted-foreground mt-1">
+            {solution.problemLink ? (
+              <a href={solution.problemLink} target="_blank" rel="noreferrer" className="underline">
+                Problem Link
+              </a>
+            ) : (
+              "Custom assignment"
+            )}
+          </div>
 
-      <div className="my-3">
-        <CodeViewer
-          code={solution.code}
-          language={solution.language}
-          // inlineComments={inline}
-          onAddInlineComment={addInlineComment}
-        />
-      </div>
+          <div className="my-3">
+            <CodeViewer
+              code={solution.code}
+              language={solution.language}
+              // inlineComments={inline}
+              onAddInlineComment={addInlineComment}
+            />
+          </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-md border p-2">
-          <div className="mb-1 text-xs text-muted-foreground">Approach</div>
-          <div className="prose prose-sm max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{solution.approach || ""}</ReactMarkdown>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-md border p-2">
+              <div className="mb-1 text-xs text-muted-foreground">Approach</div>
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{solution.approach || ""}</ReactMarkdown>
+              </div>
+            </div>
+            <div className="rounded-md border p-2">
+              <div className="mb-1 text-xs text-muted-foreground">T.C. (LaTeX)</div>
+              <div className="text-sm">{solution.tc}</div>
+            </div>
+            <div className="rounded-md border p-2">
+              <div className="mb-1 text-xs text-muted-foreground">S.C. (LaTeX)</div>
+              <div className="text-sm">{solution.sc}</div>
+            </div>
+          </div>
+
+          {solutionExpired ? (
+            <div className="mt-3 text-sm font-semibold text-red-500">
+              Solution expired. Upvoting and commenting are disabled.
+            </div>
+          ) : (
+            <div className="mt-3 flex items-center gap-2">
+              <Button size="sm" onClick={onUpvote}>
+                Upvote ({solution.upvotesCount ?? 0})
+              </Button>
+            </div>
+          )}
+
+          {/* COLLAPSIBLE COMMENTS SECTION */}
+          <div className="mt-4 border-t pt-4">
+            <CollapsibleSection
+              title="Comments"
+              count={totalCommentCount} // Display total comments count here
+              defaultOpen={false} // Comments start collapsed
+            >
+              <CommentsThread
+                comments={generalComments} // <-- Pass the filtered list of general comments
+                onAdd={addComment} // <-- Use the function for general comments/replies
+                onUpvote={upvoteComment}
+              />
+            </CollapsibleSection>
           </div>
         </div>
-        <div className="rounded-md border p-2">
-          <div className="mb-1 text-xs text-muted-foreground">T.C. (LaTeX)</div>
-          <div className="text-sm">{solution.tc}</div>
-        </div>
-        <div className="rounded-md border p-2">
-          <div className="mb-1 text-xs text-muted-foreground">S.C. (LaTeX)</div>
-          <div className="text-sm">{solution.sc}</div>
-        </div>
-      </div>
-
-      {solutionExpired ? (
-        <div className="mt-3 text-sm font-semibold text-red-500">Solution expired. Upvoting and commenting are disabled.</div>
-      ) : (
-        <div className="mt-3 flex items-center gap-2">
-          <Button size="sm" onClick={onUpvote}>
-            Upvote ({solution.upvotesCount ?? 0})
-          </Button>
-          {/* <Button size="sm" variant="secondary" onClick={onBookmark}>
-            Bookmark
-          </Button> */}
-        </div>
-      )}
-      
-
-      <div className="mt-4">
-        <CommentsThread
-          comments={generalComments} // <-- Pass the filtered list of general comments
-          onAdd={addComment}       // <-- Use the function for general comments/replies
-          onUpvote={upvoteComment}
-        />
-      </div>
+      </CollapsibleSection>
     </div>
   )
 }
@@ -630,7 +690,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
         <thead>
           <tr className="text-left text-muted-foreground">
             <th className="py-2 pr-4">User</th>
-            <th className="py-2 pr-4">Submissions</th>
+            {/* <th className="py-2 pr-4">Submissions</th> */}
             <th className="py-2">Last submission</th>
           </tr>
         </thead>
@@ -643,7 +703,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
                   {getDisplayName(r.uid)} 
                 </a>
               </td>
-              <td className="py-2 pr-4">{r.submissions}</td>
+              {/* <td className="py-2 pr-4">{r.submissions}</td> */}
               <td className="py-2">{r.lastSubmissionAt ? new Date(r.lastSubmissionAt).toLocaleString() : "-"}</td>
             </tr>
           ))}
