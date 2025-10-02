@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animated SVG Icon</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font for modern aesthetic */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+        }
+
+        /* --- Animation Keyframes --- */
+
+        /* Animation for the ripples: scale out and fade away */
+        @keyframes ripple-wave {
+            0% {
+                transform: scale(1);
+                opacity: 0.8;
+                stroke-width: 2;
+            }
+            100% {
+                transform: scale(1.8); /* Scale outward significantly */
+                opacity: 0;
+                stroke-width: 0;
+            }
+        }
+
+        /* Animation for a subtle background pulse (shining effect) */
+        @keyframes shine-pulse {
+            0%, 100% {
+                box-shadow: 0 0 10px rgba(13, 27, 42, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 20px rgba(0, 224, 255, 0.6), 0 0 40px rgba(255, 157, 60, 0.4);
+            }
+        }
+
+        .animated-svg-container {
+            border-radius: 50%;
+            animation: shine-pulse 4s infinite alternate ease-in-out;
+            transition: all 0.3s ease;
+        }
+
+        /* Target the three ripple circles for animation */
+        .ripple {
+            transform-origin: 50% 50%; /* Ensure scaling is centered */
+            animation: ripple-wave 3s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94); /* Smooth animation curve */
+        }
+
+        /* Apply increasing delay to create a continuous wave effect */
+        .ripple-1 {
+            animation-delay: 0s;
+        }
+        .ripple-2 {
+            animation-delay: 1s;
+        }
+        .ripple-3 {
+            animation-delay: 2s;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <div class="p-8 rounded-xl bg-white shadow-2xl">
+        <!-- SVG Icon Container -->
+        <div class="animated-svg-container p-2">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="200" height="200">
+                <defs>
+                    <!-- Ripple Gradient (used for the expanding circles) -->
+                    <linearGradient id="rippleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#00e0ff"/>
+                        <stop offset="100%" stop-color="#ff9d3c"/>
+                    </linearGradient>
+
+                    <!-- Glyph Gradient (Original, but we'll use solid white for clarity on the animation) -->
+                    <linearGradient id="glyphGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#ffffff"/>
+                        <stop offset="100%" stop-color="#33ccff"/>
+                    </linearGradient>
+                </defs>
+
+                <!-- 1. Background Circle (The solid core of the icon) -->
+                <circle cx="32" cy="32" r="30" fill="#0d1b2a"/>
+
+                <!-- 2. Animated Ripples (Moved inside a group and given classes for CSS targeting) -->
+                <!-- Note: Opacity is reset to 1.0 in CSS to be controlled by the animation -->
+                <g class="ripple-group">
+                    <!-- Ripple 1 (Innermost) -->
+                    <circle cx="32" cy="32" r="22" stroke="url(#rippleGrad)" stroke-width="2" fill="none" opacity="1.0" class="ripple ripple-1"/>
+                    <!-- Ripple 2 (Middle) -->
+                    <circle cx="32" cy="32" r="26" stroke="url(#rippleGrad)" stroke-width="1.6" fill="none" opacity="1.0" class="ripple ripple-2"/>
+                    <!-- Ripple 3 (Outermost) -->
+                    <circle cx="32" cy="32" r="30" stroke="url(#rippleGrad)" stroke-width="1.2" fill="none" opacity="1.0" class="ripple ripple-3"/>
+                </g>
+
+                <!-- 3. Main Glyph/Arrow (using solid white for simplicity as the glyphGrad was not fully utilized in the original) -->
+                <path d="M20 20 L32 32 L20 44" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M38 44 L46 44" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+
+            </svg>
+        </div>
+
+        <p class="mt-4 text-center text-gray-600 text-sm">Ripples and Subtle Shine Animation</p>
+    </div>
+
+</body>
+</html>
