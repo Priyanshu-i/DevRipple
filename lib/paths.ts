@@ -48,8 +48,8 @@ export const paths = {
       : `${paths.solutionDocument(groupId, questionId, solutionId)}/upvotes`,
 
   /** The bookmarks collection path, optionally for a specific user. */
-  solutionBookmarks: (groupId: string, questionId: string, solutionId: string, userId?: string) =>
-    userId
-      ? `${paths.solutionDocument(groupId, questionId, solutionId)}/bookmarkedBy/${userId}`
-      : `${paths.solutionDocument(groupId, questionId, solutionId)}/bookmarkedBy`,
+  // solutionBookmarks: (groupId: string, questionId: string, solutionId: string, userId?: string) =>
+  //   userId
+  //     ? `${paths.solutionDocument(groupId, questionId, solutionId)}/bookmarkedBy/${userId}`
+  //     : `${paths.solutionDocument(groupId, questionId, solutionId)}/bookmarkedBy`,
 }

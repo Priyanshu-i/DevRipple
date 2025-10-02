@@ -30,7 +30,7 @@ type NavLinkItemProps = NavLinkType & {
 const navLinks: NavLinkType[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/search", label: "Search", icon: Search },
-  { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  // { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
 ]
 
 export function TopNav() {
@@ -46,7 +46,7 @@ export function TopNav() {
       {label}
     </Link>
   )
-  
+
   // Custom component for the main desktop navigation
   const DesktopNav = () => (
     <div className="hidden md:flex items-center gap-6">
@@ -138,7 +138,7 @@ export function TopNav() {
       </SheetTrigger>
       <SheetContent side="left" className="flex flex-col">
         <h4 className="flex items-center gap-2 text-xl font-bold text-primary border-b pb-4">
-          <Zap className="h-6 w-6" />
+          <img src="/favicon.svg" alt="Favicon" className="h-6 w-6" />
           DevRipple
         </h4>
         <div className="flex flex-col space-y-1 mt-4 flex-grow">
@@ -191,7 +191,7 @@ export function TopNav() {
         <div className="flex items-center gap-2">
           <MobileNav />
           <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary transition-colors hover:text-primary/90">
-            <Zap className="h-6 w-6" />
+            <img src="/favicon.svg" alt="Favicon" className="h-6 w-6" />
             DevRipple
           </Link>
         </div>

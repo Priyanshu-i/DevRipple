@@ -8,6 +8,14 @@ import { paths } from "@/lib/paths"
 import { GroupAdminSettings } from "@/components/groups/group-admin-settings"
 import Link from "next/link"
 
+// --- Shadcn/ui & Lucide Imports ---
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Separator } from "@/components/ui/separator"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Users, User, Crown, Eye, EyeOff, Settings, Info } from "lucide-react"
 
 // Define a type for the user profile data you need
 interface UserProfile {
@@ -22,7 +30,7 @@ export default function GroupInfoPage() {
   const [members, setMembers] = useState<Record<string, boolean>>({})
   const [isMember, setIsMember] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
-  
+
   // New state to store user profiles keyed by UID
   const [userProfiles, setUserProfiles] = useState<Record<string, UserProfile>>({})
 
@@ -30,6 +38,16 @@ export default function GroupInfoPage() {
   const getDisplayName = useCallback((uid: string) => {
     return userProfiles[uid]?.displayName || uid
   }, [userProfiles])
+  
+  // Helper to generate initials for AvatarFallback
+  const getInitials = (uid: string) => {
+    const displayName = getDisplayName(uid)
+    const parts = displayName.split(/\s+/)
+    if (parts.length > 1) {
+        return (parts[0][0] + parts[1][0]).toUpperCase()
+    }
+    return displayName[0]?.toUpperCase() || '?'
+  }
 
   // --- Group Data and Membership Effects ---
 
@@ -93,42 +111,142 @@ export default function GroupInfoPage() {
   }, [db, group, members, userProfiles]) 
 
 
-  // --- Render Section (Updated to use getDisplayName) ---
+  // --- Render Section (Updated to use getDisplayName with Shadcn/ui) ---
 
+  // Loading state placeholder
+  if (!group) {
+    return (
+        <div className="flex items-center justify-center min-h-screen">
+            <p className="text-xl text-muted-foreground">Loading group info...</p>
+        </div>
+    )
+  }
+
+  // Determine member list for rendering
+  const memberUids = Object.keys(members)
+  const sortedMemberUids = memberUids.sort((a, b) => {
+    // Admin first
+    if (a === group.adminUid) return -1
+    if (b === group.adminUid) return 1
+    // Alphabetical otherwise
+    return getDisplayName(a).localeCompare(getDisplayName(b))
+  })
+  
   return (
-    <main className="container mx-auto p-6 space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold">{group?.name || "Group"}</h1>
-        <p className="text-muted-foreground">{group?.description}</p>
-      </header>
+    <main className="container mx-auto max-w-2xl py-8 px-4 sm:px-6 lg:px-8 space-y-6">
+      
+      {/* Group Header Card */}
+      <Card className="shadow-lg">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-3xl font-bold tracking-tight">
+              {group?.name || "Group"}
+            </CardTitle>
+            <Badge variant={isMember ? "default" : "secondary"} className="text-sm px-3 py-1">
+                {isMember ? "Member" : "Not Joined"}
+            </Badge>
+          </div>
+          <CardDescription>
+            {group?.description || "No description provided for this group."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+            <Separator />
+            
+            {/* About Section - Admin & Discoverability */}
+            <div className="flex flex-col space-y-3">
+                <h2 className="flex items-center text-lg font-semibold text-gray-700 dark:text-gray-300">
+                    <Info className="w-5 h-5 mr-2 text-primary" />
+                    Details
+                </h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    {/* Admin */}
+                    <div className="flex items-center space-x-2">
+                        <Crown className="w-4 h-4 text-yellow-500" />
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Admin:</span>
+                        <Button variant="link" asChild className="p-0 h-auto">
+                            <Link href={`/contact/${group?.adminUid}`} className="text-primary hover:underline">
+                                {group?.adminUid ? getDisplayName(group.adminUid) : "Loading..."}
+                            </Link>
+                        </Button>
+                    </div>
 
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">About</h2>
-        {/* Use the getDisplayName function for the Admin */}
-        <p className="text-sm text-muted-foreground">Admin: {group?.adminUid ? getDisplayName(group.adminUid) : "Loading..."}</p>
-        <p className="text-sm text-muted-foreground">Discoverable: {group?.discoverable ? "Yes" : "No"}</p>
-      </section>
+                    {/* Discoverability */}
+                    <div className="flex items-center space-x-2">
+                        {group?.discoverable ? <Eye className="w-4 h-4 text-green-500" /> : <EyeOff className="w-4 h-4 text-red-500" />}
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Discoverable:</span>
+                        <Badge variant={group?.discoverable ? "default" : "destructive"}>
+                            {group?.discoverable ? "Public" : "Private"}
+                        </Badge>
+                    </div>
+                </div>
+            </div>
 
+        </CardContent>
+      </Card>
+      
+      {/* Member List Section - Only visible to members */}
       {isMember && (
-        <section className="space-y-2">
-          <h2 className="text-xl font-semibold">Members</h2>
-          <ul className="list-disc pl-5">
-            {Object.keys(members).map((uid) => (
-              <li key={uid} className="text-sm">
-                <Link href={`/contact/${uid}`} className="underline">
-                  {getDisplayName(uid)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center text-2xl">
+                <Users className="w-6 h-6 mr-2 text-primary" />
+                Members ({memberUids.length})
+            </CardTitle>
+            <CardDescription>
+                List of all members in the group.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Use ScrollArea for a stable, contained member list */}
+            <ScrollArea className="h-[250px] w-full rounded-md border p-4">
+              <div className="space-y-3">
+                {sortedMemberUids.map((uid) => (
+                  <div key={uid} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-md transition-colors">
+                    <div className="flex items-center space-x-3">
+                      <Avatar className="w-8 h-8">
+                        <AvatarFallback>{getInitials(uid)}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-base font-medium">
+                        <Link href={`/contact/${uid}`} className="text-foreground hover:text-primary transition-colors">
+                            {getDisplayName(uid)}
+                        </Link>
+                      </span>
+                    </div>
+                    {/* Admin Tag */}
+                    {uid === group.adminUid && (
+                      <Badge variant="outline" className="text-yellow-600 border-yellow-600 bg-yellow-50 dark:bg-yellow-900/20">
+                        <Crown className="w-3 h-3 mr-1" /> Admin
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
       )}
 
+      {/* Admin Settings Section - Only visible to the admin */}
       {isAdmin && (
-        <section className="space-y-3">
-          <h2 className="text-xl font-semibold">Admin Settings</h2>
-          <GroupAdminSettings groupId={groupId} />
-        </section>
+        <Card className="shadow-lg border-2 border-primary/50">
+          <CardHeader>
+            <CardTitle className="flex items-center text-2xl text-primary">
+                <Settings className="w-6 h-6 mr-2" />
+                Admin Settings
+            </CardTitle>
+            <CardDescription>
+                Manage group properties and members.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <GroupAdminSettings groupId={groupId} />
+          </CardContent>
+          <CardFooter>
+            <p className="text-xs text-muted-foreground">Changes here affect the entire group.</p>
+          </CardFooter>
+        </Card>
       )}
     </main>
   )

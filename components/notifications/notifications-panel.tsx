@@ -22,7 +22,8 @@ type NameMap = {
 	[id: string]: string
 }
 
-export function NotificationsPanel() {
+export function NotificationsPanel({ setCount }: { setCount?: (n: number) => void }) {
+
 	const [items, setItems] = useState<Record<string, Notification>>({})
 	const [groupNames, setGroupNames] = useState<NameMap>({})
 	const [userNames, setUserNames] = useState<NameMap>({})
@@ -30,6 +31,18 @@ export function NotificationsPanel() {
 	// Helper functions to get names, falling back to ID if name is loading
 	const getGroupName = (gid: string) => groupNames[gid] || gid
 	const getUserName = (uid: string) => userNames[uid] || uid
+
+	useEffect(() => {
+    const uid = auth.currentUser?.uid
+    if (!uid) return
+    const unsub = onValue(ref(db, paths.userNotifications(uid)), (snap) => {
+      const data = snap.val() || {}
+      setItems(data)
+      if (setCount) setCount(Object.keys(data).length)
+    })
+    return () => unsub()
+  }, [setCount])
+
     
     // --- FEATURE IMPLEMENTATION: Preventing Duplicate Notifications ---
     /*
@@ -148,7 +161,7 @@ export function NotificationsPanel() {
 
 	return (
 		// Container with stable height and clean scrollbar for many items
-		<div className="space-y-3 px-0 pb-4 max-h-[30rem] overflow-y-auto pr-1"> 
+		<div className="space-y-3 px-0 pb-4  overflow-y-auto pr-1"> 
 			{list.length === 0 ? (
 				<p className="p-4 text-sm text-muted-foreground">You are all caught up! No notifications.</p>
 			) : (

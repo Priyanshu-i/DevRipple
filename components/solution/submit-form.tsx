@@ -143,6 +143,8 @@ export function SubmitForm({ groupId, questionId }: Props) {
     } finally {
       setIsSubmitting(false)
     }
+
+    
   }
 
   return (

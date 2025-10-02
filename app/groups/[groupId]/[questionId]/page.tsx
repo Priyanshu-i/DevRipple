@@ -286,6 +286,8 @@ function SolutionItem({
   solution: any
   onUpvote: () => void
 }) {
+  const [expanded, setExpanded] = useState(false)
+
   const { data: allComments = [] } = useSWRSubscription(
     solution?.id ? paths.solutionComments(groupId, questionId, solution.id) : null,
     (key, { next }) => {
@@ -422,22 +424,43 @@ function SolutionItem({
             />
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-md border p-2">
-              <div className="mb-1 text-xs text-muted-foreground">Approach</div>
-              <div className="prose prose-sm max-w-none dark:prose-invert">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{solution.approach || ""}</ReactMarkdown>
-              </div>
-            </div>
-            <div className="rounded-md border p-2">
-              <div className="mb-1 text-xs text-muted-foreground">T.C. (LaTeX)</div>
-              <div className="text-sm">{solution.tc}</div>
-            </div>
-            <div className="rounded-md border p-2">
-              <div className="mb-1 text-xs text-muted-foreground">S.C. (LaTeX)</div>
-              <div className="text-sm">{solution.sc}</div>
-            </div>
-          </div>
+          <div className={`gap-4 ${expanded ? "flex flex-col" : "grid md:grid-cols-3"}`}>
+      {/* Approach */}
+      <div className="rounded-md border p-3">
+        <div className="mb-1 text-xs text-muted-foreground">Approach</div>
+        <div
+          className={`prose prose-sm max-w-none dark:prose-invert transition-all ${
+            expanded ? "max-h-full" : "max-h-32 overflow-hidden"
+          }`}
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {solution.approach || ""}
+          </ReactMarkdown>
+        </div>
+        {solution.approach && solution.approach.length > 300 && (
+          <button
+            className="mt-2 text-xs text-blue-600 hover:underline"
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? "View Less" : "View More"}
+          </button>
+        )}
+      </div>
+
+      {/* T.C. */}
+      <div className="rounded-md border p-3">
+        <div className="mb-1 text-xs text-muted-foreground">T.C. (LaTeX)</div>
+        <div className="text-sm break-words">{solution.tc}</div>
+      </div>
+
+      {/* S.C. */}
+      <div className="rounded-md border p-3">
+        <div className="mb-1 text-xs text-muted-foreground">S.C. (LaTeX)</div>
+        <div className="text-sm break-words">{solution.sc}</div>
+      </div>
+    </div>
+
+
 
           {solutionExpired ? (
             <div className="mt-3 text-sm font-semibold text-red-500">
@@ -634,7 +657,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-medium">Group Leaderboard</h2>
+        <h2 className="text-lg font-medium">Group Metrics</h2>
         <div 
           className="text-sm text-muted-foreground cursor-default"
           title={ratioMetric.tooltip}
