@@ -567,35 +567,30 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
 
   const [userNames, setUserNames] = useState<NameMap>({})
 
-  const Names = Object.entries(stats || {}).map(([uid, s]: any) => ({
-    uid,
-    submissions: s.submissions || 0,
-    lastSubmissionAt: s.lastSubmissionAt || 0,
-  }))
-    Names.sort((a, b) => b.submissions - a.submissions || b.lastSubmissionAt - a.lastSubmissionAt)
-
-
   const rows = useMemo(() => {
-    if (!stats) return []
-    
-    // FIX: Cast Object.entries(stats) to the correct tuple array type.
-    const statsEntries = Object.entries(stats) as [string, UserSubmissionStats | undefined][]
+    if (!stats) return []
 
-    const data = statsEntries.map(([uid, s]) => ({
-      uid,
-      submissions: s?.submissions ?? 0, 
-      lastSubmissionAt: s?.lastSubmissionAt ?? 0,
-    }))
-    
-    const submittedRows = data.filter(r => r.submissions > 0)
-    submittedRows.sort((a, b) => b.submissions - a.submissions || b.lastSubmissionAt - a.lastSubmissionAt)
-    return submittedRows
-  }, [stats])
+    const now = Date.now()
+    const twentyFourHours = 24 * 60 * 60 * 1000
+
+    const statsEntries = Object.entries(stats) as [string, UserSubmissionStats | undefined][]
+
+    const data = statsEntries
+      .map(([uid, s]) => ({
+        uid,
+        submissions: s?.submissions ?? 0,
+        lastSubmissionAt: s?.lastSubmissionAt ?? 0,
+      }))
+      .filter(s => now - s.lastSubmissionAt < twentyFourHours) // Keep only recent submissions
+
+    data.sort((a, b) => b.submissions - a.submissions || b.lastSubmissionAt - a.lastSubmissionAt)
+    return data
+  }, [stats])
 
   const ratioMetric = useMemo(() => {
     const uniqueSubmitters = stats ? Object.keys(stats).length : 0
-    const totalUsers = members ? Object.keys(members).length : 0 
-    
+    const totalUsers = members ? Object.keys(members).length : 0
+
     if (totalUsers === 0) {
       return { display: "N/A", tooltip: "No members in group." }
     }
@@ -648,7 +643,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
         </div>
       </div>
 
-      {Names.length ? (
+      {rows.length ? (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -658,7 +653,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
               </tr>
             </thead>
             <tbody>
-              {Names.map((r) => (
+              {rows.map((r) => (
                 <tr key={r.uid} className="border-t">
                   <td className="py-2 pr-4">
                     <a className="underline" href={`/contact/${r.uid}`}>
@@ -672,7 +667,7 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
           </table>
         </div>
       ) : (
-        <div className="mt-3 text-sm text-muted-foreground">No submissions yet.</div>
+        <div className="mt-3 text-sm text-muted-foreground">No submissions in the last 24 hours.</div>
       )}
     </div>
   )
@@ -680,7 +675,25 @@ function GroupLeaderboard({ groupId }: { groupId: string }) {
 
 function TimeRemaining({ expiresAt }: { expiresAt?: number | null }) {
   if (!expiresAt) return null
-  const remaining = Math.max(0, expiresAt - Date.now())
+
+  const [remaining, setRemaining] = useState(() => {
+    if (!expiresAt) return 0
+    return Math.max(0, expiresAt - Date.now())
+  })
+
+  useEffect(() => {
+    if (remaining === 0) return
+
+    const interval = setInterval(() => {
+      const newRemaining = Math.max(0, expiresAt - Date.now())
+      setRemaining(newRemaining)
+      if (newRemaining === 0) {
+        clearInterval(interval)
+      }
+    }, 1000 * 60) // Update every minute
+
+    return () => clearInterval(interval)
+  }, [expiresAt, remaining])
 
   if (remaining === 0) {
     return (
