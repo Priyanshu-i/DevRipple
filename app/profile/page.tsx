@@ -106,7 +106,7 @@ export default function ProfilePage() {
       setGithub(profile.github ?? "")
       setLeetcode(profile.leetcode ?? "")
     }
-  }, [profile])
+  }, [profile]) 
   
   // Fetch Group Names
   useEffect(() => {

@@ -6,6 +6,8 @@ import { getAuth } from "firebase/auth"
 import { getDatabase, ref, onValue } from "firebase/database"
 import { paths } from "@/lib/paths"
 import { GroupAdminSettings } from "@/components/groups/group-admin-settings"
+import Link from "next/link"
+
 
 // Define a type for the user profile data you need
 interface UserProfile {
@@ -68,7 +70,7 @@ export default function GroupInfoPage() {
       // Check if we've already loaded this profile to avoid redundant listeners
       if (userProfiles[uid]) return; 
 
-      const userRef = ref(db, paths.user(uid))
+      const userRef = ref(db, paths.userPublic(uid))
       const listener = onValue(userRef, (snap) => {
         const v = snap.val()
         if (v) {
@@ -113,8 +115,9 @@ export default function GroupInfoPage() {
           <ul className="list-disc pl-5">
             {Object.keys(members).map((uid) => (
               <li key={uid} className="text-sm">
-                {/* Use the getDisplayName function for members */}
-                {getDisplayName(uid)}
+                <Link href={`/contact/${uid}`} className="underline">
+                  {getDisplayName(uid)}
+                </Link>
               </li>
             ))}
           </ul>

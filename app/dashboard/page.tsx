@@ -118,9 +118,19 @@ export default function DashboardPage() {
                 recent.map((s: any) => (
                   <div key={s.id} className="rounded-md border p-3 text-sm">
                     <div className="flex items-center justify-between">
-                      <div className="font-medium">{s.authorName}</div>
-                      <div className="text-xs text-muted-foreground">{s.language}</div>
-                    </div>
+    {/* Use a Link only if s.authorId is available, otherwise use a plain div */}
+    {s.authorId ? (
+        <Link 
+            href={`/contact/${s.authorId}`}
+            className="font-medium hover:underline text-primary"
+        >
+            {s.authorName}
+        </Link>
+    ) : (
+        <div className="font-medium">{s.authorName}</div>
+    )}
+    <div className="text-xs text-muted-foreground">{s.language}</div>
+</div>
                     <div className="text-muted-foreground">{s.problemLink || "Custom assignment"}</div>
                     <div className="mt-2">
                       <Link className="text-sm underline" href={`/groups/${s.groupId}`}>
