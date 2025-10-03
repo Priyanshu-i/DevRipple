@@ -245,7 +245,7 @@ export default function DashboardPage() {
             Public groups accepting new members. Join a challenge or a learning community!
           </CardDescription>
         </CardHeader>
-
+      
         {/* Scrollable area */}
         <ScrollArea className="flex-1 px-4 pb-4 overflow-y-auto">
           <CardContent>

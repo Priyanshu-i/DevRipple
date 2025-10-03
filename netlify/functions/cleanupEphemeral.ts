@@ -46,6 +46,7 @@ export const handler: Handler = async () => {
       }),
     };
   } catch (err: any) {
+    console.error("cleanupEphemeral error:", err);
     return {
       statusCode: 500,
       body: JSON.stringify({

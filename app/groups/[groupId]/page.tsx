@@ -8,11 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { db } from '@/lib/firebase';
-import { ref, onValue, push, set } from 'firebase/database';
+import { auth, db } from '@/lib/firebase';
+import { getDatabase, ref, onValue, push, set } from 'firebase/database';
 import { paths } from '@/lib/paths'; // import your paths object
 import { useAuth } from '@/hooks/use-auth'; // Custom hook to get auth info
 import useSWRSubscription from "swr/subscription"
+import { getAuth } from "firebase/auth"
 
 // --- TYPES ---
 interface Question {
@@ -214,8 +215,28 @@ export default function QuestionIndexPage() {
   const [groupData, setGroupData] = useState<GroupData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const isAdmin = user && group?.adminUid === user.uid; 
+  const [secondaryAdmins, setSecondaryAdmins] = useState<Record<string, boolean>>({})
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [isSecondaryAdmin, setIsSecondaryAdmin] = useState(false)
+  const [canManage, setCanManage] = useState(false) // Combined check
   const [modalOpen, setModalOpen] = useState(false);
+  
+
+  // Listen to secondary admins
+  useEffect(() => {
+    const unsub = onValue(ref(db, paths.groupSecondaryAdmins(groupId)), 
+      (snap) => setSecondaryAdmins(snap.val() || {})
+    )
+    return () => unsub()
+  }, [db, groupId])
+
+    // Set permissions
+    useEffect(() => {
+      const uid = auth.currentUser?.uid
+      setIsAdmin(group?.adminUid === uid)
+      setIsSecondaryAdmin(!!secondaryAdmins[uid || ""])
+      setCanManage(group?.adminUid === uid || !!secondaryAdmins[uid || ""])
+    }, [group, secondaryAdmins, auth])
 
   // Fetch group info and questions
   useEffect(() => {
@@ -336,7 +357,7 @@ export default function QuestionIndexPage() {
               Click on a question to view details and submit your solution.
             </CardDescription>
           </div>
-          {isAdmin && (
+          {canManage && (
             <Button variant="default" size="sm" onClick={() => setModalOpen(true)}>
               <Plus className="w-4 h-4 mr-1" /> Add Question
             </Button>
@@ -345,32 +366,81 @@ export default function QuestionIndexPage() {
         <CardContent className="p-0">
           {/* Desktop/Tablet Table View */}
           <div className="hidden sm:block">
-            <Table>
+
+
+            <Table className="border-separate border-spacing-x-6 w-full">
+  <TableHeader>
+    <TableRow>
+      <TableHead className="px-4 py-2 text-left">Question Title</TableHead>
+      <TableHead className="w-[150px] px-4 py-2 text-left">Difficulty</TableHead>
+      <TableHead className="w-[100px] px-4 py-2 text-right">Points</TableHead>
+      {/* <TableHead className="w-[150px] px-4 py-2 text-left">Status</TableHead> */}
+      <TableHead className="w-[80px] px-4 py-2 text-center">Action</TableHead>
+    </TableRow>
+  </TableHeader>
+
+  <TableBody>
+    {groupData.questions.map((question) => (
+      <TableRow
+        key={question.id}
+        className="hover:bg-indigo-50/50 dark:hover:bg-gray-800/50 transition-colors"
+      >
+        {/* Title */}
+        <TableCell className="font-semibold px-4 py-2 text-left">
+          {question.title}
+        </TableCell>
+
+        {/* Difficulty */}
+        <TableCell
+          className={`${getDifficultyColor(question.difficulty)} px-4 py-2 text-left`}
+        >
+          {question.difficulty}
+        </TableCell>
+
+        {/* Points */}
+        <TableCell className="text-right text-gray-700 dark:text-gray-300 px-4 py-2">
+          +{question.points}
+        </TableCell>
+
+        {/* Action */}
+        <TableCell className="px-4 py-2 text-center">
+          <Link href={`/groups/${groupId}/${question.id}`} passHref>
+            <Button size="sm" variant="default">
+              View
+            </Button>
+          </Link>
+        </TableCell>
+      </TableRow>
+    ))}
+  </TableBody>
+</Table>
+
+            {/* <Table className="border-separate border-spacing-x-6">
               <TableHeader>
                 <TableRow>
                   <TableHead>Question Title</TableHead>
                   <TableHead className="w-[150px]">Difficulty</TableHead>
                   <TableHead className="w-[100px] text-right">Points</TableHead>
-                  <TableHead className="w-[150px]">Status</TableHead>
+                  {/* <TableHead className="w-[150px]">Status</TableHead>
                   <TableHead className="w-[80px]">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {groupData.questions.map((question) => (
                   <TableRow key={question.id} className="hover:bg-indigo-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                    <TableCell className="font-semibold">
+                    <TableCell className="font-semibold px-4 py-2">
                       {question.title}
                     </TableCell>
                     <TableCell className={getDifficultyColor(question.difficulty)}>
                       {question.difficulty}
                     </TableCell>
-                    <TableCell className="text-right text-gray-700 dark:text-gray-300">
+                    <TableCell className="text-right text-gray-700 dark:text-gray-300 px-4 py-2">
                       +{question.points}
                     </TableCell>
-                    <TableCell>
+                    {/* <TableCell>
                       {getStatusBadge(question.status)}
-                    </TableCell>
-                    <TableCell>
+                    </TableCell> 
+                    <TableCell className="px-4 py-2">
                       <Link href={`/groups/${groupId}/${question.id}`} passHref>
                         <Button size="sm" variant="default">
                           View
@@ -380,7 +450,10 @@ export default function QuestionIndexPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+            </Table> */}
+
+
+
           </div>
           {/* Mobile Card View */}
           <div className="sm:hidden p-4 space-y-4">
@@ -396,7 +469,7 @@ export default function QuestionIndexPage() {
                   <div className="flex flex-col">
                     <span className="font-medium text-gray-700 dark:text-gray-300">Points: +{question.points}</span>
                   </div>
-                  {getStatusBadge(question.status)}
+                  {/* {getStatusBadge(question.status)} */}
                 </div>
                 <Link href={`/groups/${groupId}/${question.id}`} passHref>
                   <Button size="sm" className="w-full">
@@ -410,7 +483,7 @@ export default function QuestionIndexPage() {
       </Card>
 
       {/* Admin Quick Links */}
-      {isAdmin && (
+      {canManage && (
         <div className="mt-8 text-center border-t pt-6">
           <p className="text-sm text-muted-foreground mb-4">
             Group Admin actions

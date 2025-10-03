@@ -116,6 +116,7 @@ export default function GroupQuestionPage() {
   const groupId = params.groupId
   const questionId = params.questionId
   const { user } = useAuth()
+  
 
   const { data: group } = useSWRSubscription(groupId ? paths.group(groupId) : null, (key, { next }) => {
     const unsub = onValue(ref(db, key), (snap) => next(null, snap.val() as Group | null))
@@ -420,14 +421,14 @@ function SolutionItem({
             <CodeViewer
               code={solution.code}
               language={solution.language}
-              onAddInlineComment={addInlineComment}
+              // onAddInlineComment={addInlineComment}
             />
           </div>
 
           <div className={`gap-4 ${expanded ? "flex flex-col" : "grid md:grid-cols-3"}`}>
       {/* Approach */}
       <div className="rounded-md border p-3">
-        <div className="mb-1 text-xs text-muted-foreground">Approach</div>
+        <div className="mb-1 text-xs text-muted-foreground">Approach +</div>
         <div
           className={`prose prose-sm max-w-none dark:prose-invert transition-all ${
             expanded ? "max-h-full" : "max-h-32 overflow-hidden"
