@@ -1,31 +1,58 @@
+// import type { Handler } from "@netlify/functions";
+// import { db } from "../../lib/firebase-admin";
+// import { paths } from "../../lib/paths"; // Your schema paths
+
+// // Utility: delete all children of a path
+// async function deleteAllAtPath(path: string) {
+//   console.log(`Deleting at path: ${path}`);
+//   await db.ref(path).remove();
+// }
+
+// export const handler: Handler = async () => {
+//   try {
+//     // Clean ephemeral collections
+//     await Promise.all([
+//       deleteAllAtPath("ephemeralSubmissions"),
+//       deleteAllAtPath("groupQuestions"),
+//       deleteAllAtPath("indexByAuthor"),
+//       deleteAllAtPath("indexByLanguage"),
+//       deleteAllAtPath("indexBytag"),
+//       deleteAllAtPath("solutions_global"),
+//     ]);
+
+//     return {
+//       statusCode: 200,
+//       body: JSON.stringify({ success: true, message: "Cleanup complete" }),
+//     };
+//   } catch (error) {
+//     console.error("Cleanup failed", error);
+//     return { statusCode: 500, body: JSON.stringify({ error: "Cleanup failed" }) };
+//   }
+// };
+
 import type { Handler } from "@netlify/functions";
 import { db } from "../../lib/firebase-admin";
-import { paths } from "../../lib/paths"; // Your schema paths
-
-// Utility: delete all children of a path
-async function deleteAllAtPath(path: string) {
-  console.log(`Deleting at path: ${path}`);
-  await db.ref(path).remove();
-}
 
 export const handler: Handler = async () => {
   try {
-    // Clean ephemeral collections
-    await Promise.all([
-      deleteAllAtPath("ephemeralSubmissions"),
-      deleteAllAtPath("groupQuestions"),
-      deleteAllAtPath("indexByAuthor"),
-      deleteAllAtPath("indexByLanguage"),
-      deleteAllAtPath("indexBytag"),
-      deleteAllAtPath("solutions_global"),
-    ]);
+    // Just test a quick read
+    const snapshot = await db.ref("/").limitToFirst(1).once("value");
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true, message: "Cleanup complete" }),
+      body: JSON.stringify({
+        success: true,
+        sample: snapshot.val()
+      }),
     };
-  } catch (error) {
-    console.error("Cleanup failed", error);
-    return { statusCode: 500, body: JSON.stringify({ error: "Cleanup failed" }) };
+  } catch (err: any) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        success: false,
+        error: err.message,
+        stack: err.stack,
+      }),
+    };
   }
 };
