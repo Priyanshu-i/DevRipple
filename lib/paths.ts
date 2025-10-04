@@ -11,15 +11,33 @@ export const paths = {
   groupSecondaryAdmins: (groupId: string) => `groupSecondaryAdmins/${groupId}`,
   groupSecondaryAdmin: (groupId: string, uid: string) => `groupSecondaryAdmins/${groupId}/${uid}`,
   groupJoinRequests: (groupId: string) => `groupJoinRequests/${groupId}`,
+  
+  // === STATISTICS (PERSISTENT) ===
+  // Group-level stats
   groupStats: (groupId: string) => `groupStats/${groupId}`,
+  
+  // User-level stats (global)
   userStats: (uid: string) => `userStats/${uid}`,
+  
+  // Group member stats (user stats within a specific group)
+  groupMemberStats: (groupId: string, uid: string) => `groupStats/${groupId}/memberStats/${uid}`,
+  groupMemberStatsCollection: (groupId: string) => `groupStats/${groupId}/memberStats`,
+  
+  // Question stats (persists after question deletion)
+  questionStats: (groupId: string, questionId: string) => `groupStats/${groupId}/questionStats/${questionId}`,
+  questionStatsCollection: (groupId: string) => `groupStats/${groupId}/questionStats`,
+  
+  // User submission stats per question (persists after solution deletion)
+  userQuestionStats: (groupId: string, questionId: string, uid: string) => 
+    `groupStats/${groupId}/questionStats/${questionId}/userStats/${uid}`,
+  userQuestionStatsCollection: (groupId: string, questionId: string) => 
+    `groupStats/${groupId}/questionStats/${questionId}/userStats`,
 
-  // Questions (24h lifetime handled via createdAt/expiresAt fields)
+  // === QUESTIONS (EPHEMERAL - 24h lifetime) ===
   groupQuestionsCollection: (groupId: string) => `groupQuestions/${groupId}`,
   groupQuestionDocument: (groupId: string, questionId: string) => `groupQuestions/${groupId}/${questionId}`,
 
   // === SOLUTIONS (EPHEMERAL) ===
-
   solutionsCollection: (groupId: string, questionId: string) => 
     `ephemeralSubmissions/${groupId}/${questionId}`,
 

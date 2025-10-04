@@ -1,6 +1,5 @@
 [functions]
   directory = "netlify/functions"
 
-[scheduled]
-  [scheduled.cleanupEphemeral]
-    schedule = "0 3 * * *" # Every day at 03:00 UTC
+[functions."cleanupEphemeral"]
+  schedule = "30 21 * * *" # 03:00 AM IST (21:30 UTC)

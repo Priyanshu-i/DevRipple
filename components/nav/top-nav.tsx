@@ -29,7 +29,7 @@ type NavLinkItemProps = NavLinkType & {
 // Define the main navigation links
 const navLinks: NavLinkType[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/search", label: "Search", icon: Search },
+  // { href: "/search", label: "Search", icon: Search },
   // { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
 ]
 

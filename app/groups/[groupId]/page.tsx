@@ -3,17 +3,17 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ListOrdered, CheckCircle, XCircle, Clock, Loader2, Users, Plus } from 'lucide-react';
+import { ListOrdered, CheckCircle, XCircle, Clock, Loader2, Users, Plus, Trophy } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { auth, db } from '@/lib/firebase';
-import { getDatabase, ref, onValue, push, set } from 'firebase/database';
-import { paths } from '@/lib/paths'; // import your paths object
-import { useAuth } from '@/hooks/use-auth'; // Custom hook to get auth info
+import { getDatabase, ref, onValue, push, set, get } from 'firebase/database';
+// Removed Firestore imports: import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { paths } from '@/lib/paths';
+import { useAuth } from '@/hooks/use-auth';
 import useSWRSubscription from "swr/subscription"
-import { getAuth } from "firebase/auth"
 
 // --- TYPES ---
 interface Question {
@@ -30,6 +30,55 @@ interface Question {
 interface GroupData {
   name: string;
   questions: Question[];
+}
+
+// Updated structure for RTDB. Question stats will be stored under the question ID in RTDB.
+interface QuestionStats {
+  questionId: string;
+  title: string;
+  totalSubmissions: number;
+  isExpired: boolean;
+}
+
+interface QuestionStatRTDB {
+    title: string;
+    totalSubmissions: number;
+    isExpired: boolean;
+    // Add other relevant question data if needed from RTDB
+}
+
+// Updated structure for RTDB. Submission stats are nested.
+interface MemberQuestionStatsRTDB {
+    submissionCount: number;
+    solutionIds: string[];
+}
+
+interface LeaderboardEntry {
+  uid: string;
+  name: string;
+  totalSubmissions: number;
+  questionStats: {
+    [questionId: string]: MemberQuestionStatsRTDB; // Use RTDB type
+  };
+}
+
+interface LeaderboardData {
+  members: LeaderboardEntry[];
+  questions: QuestionStats[];
+}
+
+interface QuestionBase {
+  title: string;
+  points: number;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  link?: string;
+}
+
+interface QuestionModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (q: QuestionBase) => void;
+  existingQuestion?: QuestionBase & { id?: string; status?: string };
 }
 
 const getStatusBadge = (status: Question['status']) => {
@@ -63,40 +112,16 @@ const getDifficultyColor = (difficulty: Question['difficulty']) => {
   }
 };
 
-// --- Modal for Adding Question ---
-// Assuming 'Question' is a type defined elsewhere
-// Assuming 'Button' and 'variant' (like 'outline') are defined elsewhere
-
-interface QuestionBase {
-  title: string;
-  points: number;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
-  link?: string; // New optional field
-}
-
-// Extend the incoming types to support the new link field and potentially existing data
-interface QuestionModalProps {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (q: QuestionBase) => void;
-  // Optional prop for editing existing data
-  existingQuestion?: QuestionBase & { id?: string; status?: string }; // Includes fields to pre-populate
-}
-
 const DEFAULT_POINTS = 100;
 const DEFAULT_DIFFICULTY: 'Easy' | 'Medium' | 'Hard' = 'Easy';
 
 function QuestionModal({ open, onClose, onSubmit, existingQuestion }: QuestionModalProps) {
-  // Determine if we are in 'edit' mode
   const existing = !!existingQuestion;
-
-  // State initialization based on whether an existingQuestion is provided
   const [title, setTitle] = useState(existingQuestion?.title || '');
   const [points, setPoints] = useState(existingQuestion?.points || DEFAULT_POINTS);
   const [difficulty, setDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>(existingQuestion?.difficulty || DEFAULT_DIFFICULTY);
-  const [link, setLink] = useState(existingQuestion?.link || ''); // New state for Problem Link
+  const [link, setLink] = useState(existingQuestion?.link || '');
 
-  // Effect to reset state or load new existing data when the modal is opened
   useEffect(() => {
     if (open) {
       setTitle(existingQuestion?.title || '');
@@ -107,11 +132,8 @@ function QuestionModal({ open, onClose, onSubmit, existingQuestion }: QuestionMo
   }, [open, existingQuestion]);
 
   const handleSubmit = () => {
-    // Basic validation
     if (title.trim()) {
       onSubmit({ title, points, difficulty, link: link.trim() || undefined });
-      
-      
     }
   };
 
@@ -124,14 +146,12 @@ function QuestionModal({ open, onClose, onSubmit, existingQuestion }: QuestionMo
           {existing ? "Edit Question" : "Add New Question"}
         </h2>
         
-        {/* Improved layout and styling */}
         <div className="rounded-md border p-4 bg-gray-50 dark:bg-gray-800">
           <div className="mb-4 text-md font-medium text-gray-700 dark:text-gray-300">
             {existing ? "Edit Today's Question" : "Post Today's Question"}
           </div>
           
           <div className="grid gap-4 md:grid-cols-2">
-            {/* Title Input */}
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
               <input
@@ -142,7 +162,6 @@ function QuestionModal({ open, onClose, onSubmit, existingQuestion }: QuestionMo
               />
             </div>
             
-            {/* Problem Link Input (New) */}
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Problem Link (optional)</label>
               <input
@@ -153,7 +172,6 @@ function QuestionModal({ open, onClose, onSubmit, existingQuestion }: QuestionMo
               />
             </div>
             
-            {/* Points Input (Back to a full row for better flow on smaller screens, or you can adjust md:grid-cols-3 if you have more fields) */}
             <div className='md:col-span-1'>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Points</label>
               <input
@@ -162,11 +180,10 @@ function QuestionModal({ open, onClose, onSubmit, existingQuestion }: QuestionMo
                 min={0}
                 placeholder="Points"
                 value={points}
-                onChange={e => setPoints(Number(e.target.value) || 0)} // Handles non-number input gracefully
+                onChange={e => setPoints(Number(e.target.value) || 0)}
               />
             </div>
 
-            {/* Difficulty Select */}
             <div className='md:col-span-1'>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Difficulty</label>
               <select
@@ -179,16 +196,14 @@ function QuestionModal({ open, onClose, onSubmit, existingQuestion }: QuestionMo
                 <option value="Hard">Hard</option>
               </select>
             </div>
-
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="flex justify-end gap-3 mt-6">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={handleSubmit}
-            disabled={!title.trim()} // Disable submit if title is empty
+            disabled={!title.trim()}
           >
             {existing ? "Save Changes" : "Add"}
           </Button>
@@ -198,45 +213,109 @@ function QuestionModal({ open, onClose, onSubmit, existingQuestion }: QuestionMo
   );
 }
 
-// The 'Omit<Question, 'id' | 'status'>' from your original prop has been generalized 
-// to 'QuestionBase' to cleanly include the new 'link' field.
-// export default QuestionModal; 
-// (or whatever your export strategy is)
+// Leaderboard Component
+function Leaderboard({ data }: { data: LeaderboardData; groupId: string }) {
+  const { members } = data;
+
+  // Sort members by total submissions (or alphabetically if totalSubmissions missing)
+  const sortedMembers = [...members].sort(
+    (a, b) => (b.totalSubmissions ?? 0) - (a.totalSubmissions ?? 0)
+  );
+
+  if (sortedMembers.length === 0) {
+    return (
+      <div className="text-center py-8 text-gray-500">
+        No submissions yet in this group.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full border-collapse border border-gray-300 dark:border-gray-700">
+        <thead>
+          <tr className="bg-gray-100 dark:bg-gray-800">
+            <th className="border border-gray-300 dark:border-gray-700 px-4 py-2 text-left font-semibold sticky left-0 bg-gray-100 dark:bg-gray-800 z-10">
+              Name (Contact)
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {sortedMembers.map((member, idx) => (
+            <tr
+              key={member.uid}
+              className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
+            >
+              <td className="border border-gray-300 dark:border-gray-700 px-4 py-2 sticky left-0 bg-white dark:bg-gray-900 z-10">
+                <div className="flex items-center gap-2">
+                  {idx < 3 && (
+                    <span
+                      className={`text-lg ${
+                        idx === 0
+                          ? "text-yellow-500"
+                          : idx === 1
+                          ? "text-gray-400"
+                          : "text-orange-600"
+                      }`}
+                    >
+                      {/* {idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉"} */}
+                    </span>
+                  )}
+                  <Link
+                    href={`/contact/${member.uid}`}
+                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    {member.name}
+                  </Link>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 
 export default function QuestionIndexPage() {
   const { user } = useAuth()
   const params = useParams();
   const groupId = Array.isArray(params.groupId) ? params.groupId[0] : params.groupId;
-  const { data: group } = useSWRSubscription(groupId ? `groups/${groupId}` : null, (key, { next }) => {
+  
+  // Use SWRSubscription for group data from RTDB
+  const { data: group } = useSWRSubscription(groupId ? paths.group(groupId) : null, (key, { next }) => {
     const unsub = onValue(ref(db, key), (snap) => next(null, snap.val()))
     return () => unsub()
   })
 
   const [groupData, setGroupData] = useState<GroupData | null>(null);
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [secondaryAdmins, setSecondaryAdmins] = useState<Record<string, boolean>>({})
   const [isAdmin, setIsAdmin] = useState(false)
   const [isSecondaryAdmin, setIsSecondaryAdmin] = useState(false)
-  const [canManage, setCanManage] = useState(false) // Combined check
+  const [canManage, setCanManage] = useState(false)
   const [modalOpen, setModalOpen] = useState(false);
-  
 
   // Listen to secondary admins
   useEffect(() => {
+    // This is already using RTDB, so it's fine
     const unsub = onValue(ref(db, paths.groupSecondaryAdmins(groupId)), 
       (snap) => setSecondaryAdmins(snap.val() || {})
     )
     return () => unsub()
-  }, [db, groupId])
+  }, [groupId])
 
-    // Set permissions
-    useEffect(() => {
-      const uid = auth.currentUser?.uid
-      setIsAdmin(group?.adminUid === uid)
-      setIsSecondaryAdmin(!!secondaryAdmins[uid || ""])
-      setCanManage(group?.adminUid === uid || !!secondaryAdmins[uid || ""])
-    }, [group, secondaryAdmins, auth])
+  // Set permissions
+  useEffect(() => {
+    const uid = auth.currentUser?.uid
+    setIsAdmin(group?.adminUid === uid)
+    setIsSecondaryAdmin(!!secondaryAdmins[uid || ""])
+    setCanManage(group?.adminUid === uid || !!secondaryAdmins[uid || ""])
+  }, [group, secondaryAdmins])
 
   // Fetch group info and questions
   useEffect(() => {
@@ -244,14 +323,15 @@ export default function QuestionIndexPage() {
 
     setLoading(true);
 
-    // Fetch group name
     const groupRef = ref(db, paths.group(groupId));
-    onValue(groupRef, (snapshot) => {
+    
+    // Use onValue for group data (name)
+    const unsubGroup = onValue(groupRef, (snapshot) => {
       const groupName = snapshot.val()?.name || `Group ${groupId}`;
-      // Fetch questions from canonical path
       const questionsRef = ref(db, paths.groupQuestionsCollection(groupId));
 
-      onValue(questionsRef, (qSnap) => {
+      // Nested onValue for questions data
+      const unsubQuestions = onValue(questionsRef, (qSnap) => {
         const questionsObj = qSnap.val() || {};
         const now = Date.now();
         const questions: Question[] = Object.entries(questionsObj)
@@ -263,7 +343,10 @@ export default function QuestionIndexPage() {
             link: q.link,
             createdAt: q.createdAt ?? 0,
             expiresAt: q.expiresAt ?? null,
-            status: 'Unattempted' as Question['status'], // TODO: Replace with user-specific status
+            // NOTE: The status 'Completed'/'Attempted' requires checking user submissions, 
+            // which is omitted here as we're focusing on the structure. 
+            // A separate RTDB listener would be needed for the current user's submission status.
+            status: 'Unattempted' as Question['status'], 
           }))
           .filter((q) => !q.expiresAt || q.expiresAt > now)
           .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
@@ -273,19 +356,119 @@ export default function QuestionIndexPage() {
         setError('Failed to load questions.');
         setLoading(false);
       });
+      
+      // Cleanup for nested listener
+      return () => unsubQuestions();
+      
     }, (err) => {
       setError('Failed to load group data.');
       setLoading(false);
     });
+    
+    // Cleanup for main listener
+    return () => unsubGroup();
 
   }, [groupId]);
 
-  // Add question handler
-  const handleAddQuestion = async (q: QuestionBase) => { // NOTE: I've updated the type to QuestionBase for clarity based on your modal
+  // Fetch leaderboard data using Realtime DB exclusively
+  useEffect(() => {
+    if (!groupId) return;
+
+    setLoadingLeaderboard(true);
+
+    // Leaderboard is now built from three main RTDB paths:
+    // 1. Question Stats
+    // 2. Group Members
+    // 3. Member Stats (total & per-question)
+
+    const questionStatsRef = ref(db, paths.questionStatsCollection(groupId));
+    
+    const unsubQuestionStats = onValue(questionStatsRef, async (qStatsSnap) => {
+        const questionStatsObj: Record<string, QuestionStatRTDB> = qStatsSnap.val() || {};
+        const questions: QuestionStats[] = Object.entries(questionStatsObj).map(([id, data]) => ({
+            questionId: id,
+            title: data.title || 'Untitled Question',
+            totalSubmissions: data.totalSubmissions || 0,
+            isExpired: data.isExpired || false,
+        }));
+        
+        // Fetch group members from Realtime DB
+        const membersRef = ref(db, paths.groupMembers(groupId));
+        
+        const unsubMembers = onValue(membersRef, async (membersSnap) => {
+            const membersObj = membersSnap.val() || {};
+            const memberUids = Object.keys(membersObj);
+
+            // Fetch all member-specific data concurrently
+            const members: LeaderboardEntry[] = await Promise.all(
+                memberUids.map(async (uid) => {
+                    // Get user public info
+                    const userPublicSnap = await get(ref(db, paths.userPublic(uid)));
+                    const userPublicData = userPublicSnap.val();
+                    const name = userPublicData?.displayName || 'Unknown User';
+                    
+                    // Get member total stats
+                    const memberStatsSnap = await get(ref(db, paths.groupMemberStats(groupId, uid)));
+                    const memberStats = memberStatsSnap.val();
+                    const totalSubmissions = memberStats?.totalSubmissions || 0;
+                    
+                    // Get per-question stats for this user
+                    const questionStats: LeaderboardEntry['questionStats'] = {};
+                    
+                    await Promise.all(
+                        questions.map(async (question) => {
+                            const userQStatsPath = paths.userQuestionStats(groupId, question.questionId, uid);
+                            const userQStatsSnap = await get(ref(db, userQStatsPath));
+                            const data: MemberQuestionStatsRTDB | null = userQStatsSnap.val();
+
+                            if (data) {
+                                questionStats[question.questionId] = {
+                                    submissionCount: data.submissionCount || 0,
+                                    solutionIds: data.solutionIds || [],
+                                };
+                            }
+                        })
+                    );
+
+                    return {
+                        uid,
+                        name,
+                        totalSubmissions,
+                        questionStats,
+                    };
+                })
+            );
+
+            const activeMembers = members.filter(m => m.totalSubmissions > 0);
+
+            setLeaderboardData({
+                members: activeMembers,
+                questions,
+            });
+            setLoadingLeaderboard(false);
+        }, (err) => {
+            console.error('Error fetching group members:', err);
+            setLoadingLeaderboard(false);
+        });
+        
+        return () => unsubMembers();
+        
+    }, (err) => {
+        console.error('Error fetching question stats:', err);
+        setLoadingLeaderboard(false);
+    });
+
+    return () => unsubQuestionStats();
+
+  }, [groupId]);
+
+  const handleAddQuestion = async (q: QuestionBase) => {
     const questionsRef = ref(db, paths.groupQuestionsCollection(groupId));
     const newRef = push(questionsRef);
     const now = Date.now();
     const oneDayMs = 24 * 60 * 60 * 1000;
+    
+    // Set question data in the ephemeral location
     await set(newRef, {
       id: newRef.key,
       title: q.title,
@@ -295,6 +478,16 @@ export default function QuestionIndexPage() {
       createdAt: now,
       expiresAt: now + oneDayMs,
     });
+    
+    // Also update the persistent question stats location
+    await set(ref(db, paths.questionStats(groupId, newRef.key as string)), {
+        title: q.title,
+        totalSubmissions: 0,
+        isExpired: false, // Initially active
+        createdAt: now,
+        // The expiration will be managed by a server function based on the ephemeral node
+    });
+
     setModalOpen(false);
   };
 
@@ -345,8 +538,8 @@ export default function QuestionIndexPage() {
         </Link>
       </div>
 
-      {/* Responsive Question List */}
-      <Card className="shadow-xl">
+      {/* Questions Section */}
+      <Card className="shadow-xl mb-8">
         <CardHeader className="border-b flex justify-between items-center">
           <div>
             <CardTitle className="text-xl flex items-center">
@@ -364,83 +557,35 @@ export default function QuestionIndexPage() {
           )}
         </CardHeader>
         <CardContent className="p-0">
-          {/* Desktop/Tablet Table View */}
           <div className="hidden sm:block">
-
-
             <Table className="border-separate border-spacing-x-6 w-full">
-  <TableHeader>
-    <TableRow>
-      <TableHead className="px-4 py-2 text-left">Question Title</TableHead>
-      <TableHead className="w-[150px] px-4 py-2 text-left">Difficulty</TableHead>
-      <TableHead className="w-[100px] px-4 py-2 text-right">Points</TableHead>
-      {/* <TableHead className="w-[150px] px-4 py-2 text-left">Status</TableHead> */}
-      <TableHead className="w-[80px] px-4 py-2 text-center">Action</TableHead>
-    </TableRow>
-  </TableHeader>
-
-  <TableBody>
-    {groupData.questions.map((question) => (
-      <TableRow
-        key={question.id}
-        className="hover:bg-indigo-50/50 dark:hover:bg-gray-800/50 transition-colors"
-      >
-        {/* Title */}
-        <TableCell className="font-semibold px-4 py-2 text-left">
-          {question.title}
-        </TableCell>
-
-        {/* Difficulty */}
-        <TableCell
-          className={`${getDifficultyColor(question.difficulty)} px-4 py-2 text-left`}
-        >
-          {question.difficulty}
-        </TableCell>
-
-        {/* Points */}
-        <TableCell className="text-right text-gray-700 dark:text-gray-300 px-4 py-2">
-          +{question.points}
-        </TableCell>
-
-        {/* Action */}
-        <TableCell className="px-4 py-2 text-center">
-          <Link href={`/groups/${groupId}/${question.id}`} passHref>
-            <Button size="sm" variant="default">
-              View
-            </Button>
-          </Link>
-        </TableCell>
-      </TableRow>
-    ))}
-  </TableBody>
-</Table>
-
-            {/* <Table className="border-separate border-spacing-x-6">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Question Title</TableHead>
-                  <TableHead className="w-[150px]">Difficulty</TableHead>
-                  <TableHead className="w-[100px] text-right">Points</TableHead>
-                  {/* <TableHead className="w-[150px]">Status</TableHead>
-                  <TableHead className="w-[80px]">Action</TableHead>
+                  <TableHead className="px-4 py-2 text-left">Question Title</TableHead>
+                  <TableHead className="w-[150px] px-4 py-2 text-left">Difficulty</TableHead>
+                  <TableHead className="w-[100px] px-4 py-2 text-right">Points</TableHead>
+                  <TableHead className="w-[80px] px-4 py-2 text-center">Action</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {groupData.questions.map((question) => (
-                  <TableRow key={question.id} className="hover:bg-indigo-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                    <TableCell className="font-semibold px-4 py-2">
+                  <TableRow
+                    key={question.id}
+                    className="hover:bg-indigo-50/50 dark:hover:bg-gray-800/50 transition-colors"
+                  >
+                    <TableCell className="font-semibold px-4 py-2 text-left">
                       {question.title}
                     </TableCell>
-                    <TableCell className={getDifficultyColor(question.difficulty)}>
+                    <TableCell
+                      className={`${getDifficultyColor(question.difficulty)} px-4 py-2 text-left`}
+                    >
                       {question.difficulty}
                     </TableCell>
                     <TableCell className="text-right text-gray-700 dark:text-gray-300 px-4 py-2">
                       +{question.points}
                     </TableCell>
-                    {/* <TableCell>
-                      {getStatusBadge(question.status)}
-                    </TableCell> 
-                    <TableCell className="px-4 py-2">
+                    <TableCell className="px-4 py-2 text-center">
                       <Link href={`/groups/${groupId}/${question.id}`} passHref>
                         <Button size="sm" variant="default">
                           View
@@ -450,12 +595,9 @@ export default function QuestionIndexPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table> */}
-
-
-
+            </Table>
           </div>
-          {/* Mobile Card View */}
+
           <div className="sm:hidden p-4 space-y-4">
             {groupData.questions.map((question) => (
               <Card key={question.id} className="p-4 shadow-sm border-l-4 border-indigo-400">
@@ -469,7 +611,6 @@ export default function QuestionIndexPage() {
                   <div className="flex flex-col">
                     <span className="font-medium text-gray-700 dark:text-gray-300">Points: +{question.points}</span>
                   </div>
-                  {/* {getStatusBadge(question.status)} */}
                 </div>
                 <Link href={`/groups/${groupId}/${question.id}`} passHref>
                   <Button size="sm" className="w-full">
@@ -482,7 +623,33 @@ export default function QuestionIndexPage() {
         </CardContent>
       </Card>
 
-      {/* Admin Quick Links */}
+      {/* Leaderboard Section */}
+      <Card className="shadow-xl">
+        <CardHeader className="border-b">
+          <CardTitle className="text-xl flex items-center">
+            <Trophy className="w-5 h-5 mr-2 text-yellow-500" />
+            Group Metrics
+          </CardTitle>
+          <CardDescription>
+            Track member submissions and participation across all questions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-6">
+          {loadingLeaderboard ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+              <span className="ml-2 text-muted-foreground">Loading leaderboard...</span>
+            </div>
+          ) : leaderboardData ? (
+            <Leaderboard data={leaderboardData} groupId={groupId} />
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              No leaderboard data available.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {canManage && (
         <div className="mt-8 text-center border-t pt-6">
           <p className="text-sm text-muted-foreground mb-4">
@@ -494,7 +661,6 @@ export default function QuestionIndexPage() {
         </div>
       )}
 
-      {/* Add Question Modal */}
       <QuestionModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}

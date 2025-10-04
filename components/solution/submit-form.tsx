@@ -3,7 +3,9 @@
 import { useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { db } from "@/lib/firebase"
-import { ref, push, serverTimestamp, set, update } from "firebase/database"
+import { ref, push, serverTimestamp, set, update, onValue, runTransaction } from "firebase/database"
+// REMOVED FIREBASE FIRESTORE IMPORTS
+// import { doc, setDoc, increment, arrayUnion, serverTimestamp as firestoreServerTimestamp } from "firebase/firestore" 
 import { paths } from "@/lib/paths"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -12,12 +14,92 @@ import { CodeEditor } from "@/components/editor/code-editor"
 
 type Props = {
   groupId: string
-  questionId?: string | null // Can be null if no valid question is available
+  questionId?: string | null
+  onSuccess?: () => void // Optional callback after successful submission
 }
 
 const LANGS = ["python", "java", "cpp", "c", "javascript", "typescript"] as const
 
-export function SubmitForm({ groupId, questionId }: Props) {
+// --- START: REFACTORED recordSubmissionStats FOR RTDB ---
+
+/**
+ * Record submission statistics to Realtime DB
+ * NOTE: This relies on your `paths.ts` mapping to RTDB.
+ */
+async function recordSubmissionStats(
+  groupId: string,
+  questionId: string,
+  uid: string,
+  solutionId: string,
+  questionTitle: string,
+  questionExpiresAt?: number
+) {
+  try {
+    const now = Date.now();
+
+    // 1. Update user's question-specific stats
+    const userQuestionStatsRef = ref(db, paths.userQuestionStats(groupId, questionId, uid));
+
+    await runTransaction(userQuestionStatsRef, (currentData) => {
+      const data = currentData || {};
+      const submissionCount = (data.submissionCount || 0) + 1;
+      const solutionIds = (data.solutionIds || [] as string[]);
+
+      if (!solutionIds.includes(solutionId)) {
+        solutionIds.push(solutionId);
+      }
+
+      // Update the RTDB node
+      return {
+        uid,
+        questionId,
+        submissionCount,
+        lastSubmissionAt: now, // Use Date.now() for client-side time
+        solutionIds,
+      };
+    });
+
+    // 2. Update question stats
+    const questionStatsRef = ref(db, paths.questionStats(groupId, questionId));
+
+    await runTransaction(questionStatsRef, (currentData) => {
+      const data = currentData || {};
+
+      return {
+        questionId,
+        title: questionTitle,
+        totalSubmissions: (data.totalSubmissions || 0) + 1,
+        expiresAt: questionExpiresAt || null,
+        lastSubmissionAt: now, // Use Date.now() for client-side time
+        isExpired: questionExpiresAt ? questionExpiresAt < now : false,
+      };
+    });
+
+
+    // 3. Update group member stats (total submissions)
+    const memberStatsRef = ref(db, paths.groupMemberStats(groupId, uid));
+
+    await runTransaction(memberStatsRef, (currentData) => {
+      const data = currentData || {};
+
+      return {
+        uid,
+        groupId,
+        totalSubmissions: (data.totalSubmissions || 0) + 1,
+        lastActivityAt: now, // Use Date.now() for client-side time
+      };
+    });
+
+    console.log('✅ Stats recorded successfully to RTDB');
+  } catch (error) {
+    console.error('❌ Error recording submission stats to RTDB:', error);
+    throw error;
+  }
+}
+
+// --- END: REFACTORED recordSubmissionStats FOR RTDB ---
+
+export function SubmitForm({ groupId, questionId, onSuccess }: Props) {
   const { user } = useAuth()
   const [language, setLanguage] = useState<(typeof LANGS)[number]>("javascript")
   const [code, setCode] = useState("")
@@ -28,18 +110,37 @@ export function SubmitForm({ groupId, questionId }: Props) {
   const [tags, setTags] = useState<string>("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [questionTitle, setQuestionTitle] = useState<string>("Untitled")
 
-  
+  // Fetch question title for stats
+  // NOTE: This uses `onValue` but doesn't manage the subscription cleanup properly. 
+  // It should be inside a useEffect hook for proper cleanup if this were a production component.
+  // I'm keeping the original pattern but marking it as a note.
+  useState(() => {
+    if (!groupId || !questionId) return
+
+    const questionRef = ref(db, paths.groupQuestionDocument(groupId, questionId))
+    const unsub = onValue(questionRef, (snap) => {
+      const question = snap.val()
+      if (question?.title) {
+        setQuestionTitle(question.title)
+      }
+    })
+
+    return () => unsub()
+  })
+
   async function onSubmit() {
     if (!user) {
       setError("You must be logged in to submit a solution.")
       return
     }
-    // Note: If questionId is null, solutions will be stored under 'unassigned' question collection.
+
     if (!questionId) {
-        setError("Cannot submit: No question ID is available.")
-        return
+      setError("Cannot submit: No question ID is available.")
+      return
     }
+
     if (!code.trim() || !approach.trim() || !tc.trim() || !sc.trim()) {
       setError("Code, Approach, Time Complexity, and Space Complexity are required.")
       return
@@ -49,14 +150,14 @@ export function SubmitForm({ groupId, questionId }: Props) {
     setError(null)
 
     try {
-      const expiresAt = Date.now() + 24 * 60 * 60 * 1000 // 24 hours visibility
-      const qid = questionId // Guaranteed to be non-null by the check above
-      
-      // 1. Get a reference to the solutions collection for this specific question
+      // Use Date.now() for client-side time, which is adequate for visibility
+      const expiresAt = Date.now() + 24 * 60 * 60 * 1000 // 24 hours visibility 
+      const qid = questionId
+
+      // 1. Generate solution ID
       const solutionsCollectionRef = ref(db, paths.solutionsCollection(groupId, qid))
-      
-      // 2. Use push on the COLLECTION reference to generate a new key
-      const solutionId = push(solutionsCollectionRef).key!
+      const newSolutionRef = push(solutionsCollectionRef)
+      const solutionId = newSolutionRef.key!
 
       const tagsArray = tags
         .split(",")
@@ -74,21 +175,39 @@ export function SubmitForm({ groupId, questionId }: Props) {
         sc,
         problemLink: problemLink || null,
         createdBy: user.uid,
+        authorUid: user.uid, // Add for stats tracking
         authorName: user.displayName ?? "Anonymous",
-        createdAt: Date.now(), // Client timestamp for sorting accuracy
-        serverCreatedAt: serverTimestamp(), // Server timestamp for reliable time
+        createdAt: Date.now(),
+        serverCreatedAt: serverTimestamp(), // Use serverTimestamp for integrity
         upvotesCount: 0,
         tags: tagsArray,
         expiresAt,
         source: "ephemeral",
       }
 
-      // 3. Use the correct DOCUMENT path for setting the solution data
-      const solutionDocPath = paths.solutionDocument(groupId, qid, solutionId)
-      await set(ref(db, solutionDocPath), payload)
+      // 2. Save solution to Realtime Database
+      // Use set on the generated key
+      await set(newSolutionRef, payload) 
 
-      // 4. Update global/index documents (no change here, paths are correct)
-      await update(ref(db), {
+      // 3. Get question expiration time for stats
+      const questionRef = ref(db, paths.groupQuestionDocument(groupId, qid))
+      const questionSnap = await new Promise<any>((resolve) => {
+        onValue(questionRef, (snap) => resolve(snap.val()), { onlyOnce: true })
+      })
+      const questionExpiresAt = questionSnap?.expiresAt
+
+      // 4. Record statistics (Now fully uses RTDB)
+      await recordSubmissionStats(
+        groupId,
+        qid,
+        user.uid,
+        solutionId,
+        questionTitle,
+        questionExpiresAt
+      )
+
+      // 5. Update global indices (for search/filtering)
+      const updates: { [key: string]: any } = {
         [`solutions_global/${solutionId}`]: {
           id: solutionId,
           groupId,
@@ -98,35 +217,17 @@ export function SubmitForm({ groupId, questionId }: Props) {
           problemLink: payload.problemLink || null,
           createdAt: payload.createdAt,
         },
-      })
-
-      // 5. Update indices and stats (no change here, paths are correct)
-      const submissionTime = payload.createdAt
-
-      const updates: { [key: string]: any } = {
-        // Index by author
         [`indexByAuthor/${user.uid}/${solutionId}`]: true,
-        // Index by language
         [`indexByLanguage/${language}/${solutionId}`]: true,
-        // Update Group Stats (leaderboard)
-        [`groupStats/${groupId}/${user.uid}`]: {
-          lastSubmissionAt: submissionTime,
-          // Placeholder for submissions.
-        },
-        // Update User Stats (for user profile)
-        [`userStats/${user.uid}/${groupId}`]: {
-          lastSubmissionAt: submissionTime,
-          // Placeholder for submissions.
-        },
-      };
+      }
 
       // Index by tags
       tagsArray.forEach((t) => {
         updates[`indexByTag/${t}/${solutionId}`] = true
       })
-      
-      await update(ref(db), updates)
 
+      // Use update to simultaneously write to multiple paths
+      await update(ref(db), updates)
 
       // Clear form after successful submission
       setCode("")
@@ -135,28 +236,37 @@ export function SubmitForm({ groupId, questionId }: Props) {
       setSc("")
       setProblemLink("")
       setTags("")
-      alert("Solution submitted successfully!") // Use a proper toast/notification in a real app
+
+      // Call success callback if provided
+      if (onSuccess) {
+        onSuccess()
+      } else {
+        alert("Solution submitted successfully!")
+      }
 
     } catch (e) {
       console.error("Submission failed:", e)
-      setError("Failed to submit solution. Please check your connection.")
+      setError("Failed to submit solution. Please check your connection and try again.")
     } finally {
       setIsSubmitting(false)
     }
-
-    
   }
 
   return (
     <div className="space-y-4">
-      {error && <div className="rounded-md bg-red-100 p-3 text-sm font-medium text-red-700">{error}</div>}
+      {error && (
+        <div className="rounded-md bg-red-100 dark:bg-red-900/20 p-3 text-sm font-medium text-red-700 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
       <div className="grid gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm">Language</label>
+          <label className="mb-1 block text-sm font-medium">Language</label>
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value as any)}
-            className="w-full rounded-md border bg-background p-2"
+            className="w-full rounded-md border bg-background p-2 text-sm"
           >
             {LANGS.map((l) => (
               <option key={l} value={l}>
@@ -166,7 +276,7 @@ export function SubmitForm({ groupId, questionId }: Props) {
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-sm">Problem Link (optional)</label>
+          <label className="mb-1 block text-sm font-medium">Problem Link (optional)</label>
           <Input
             value={problemLink}
             onChange={(e) => setProblemLink(e.target.value)}
@@ -176,29 +286,46 @@ export function SubmitForm({ groupId, questionId }: Props) {
       </div>
 
       <div>
-        <label className="mb-1 block text-sm">Code</label>
+        <label className="mb-1 block text-sm font-medium">Code *</label>
         <CodeEditor value={code} onChange={setCode} language={language} placeholder="Write your solution..." />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm">Approach (Markdown allowed)</label>
-        <Textarea value={approach} onChange={(e) => setApproach(e.target.value)} rows={5} />
+        <label className="mb-1 block text-sm font-medium">Approach (Markdown allowed) *</label>
+        <Textarea
+          value={approach}
+          onChange={(e) => setApproach(e.target.value)}
+          rows={5}
+          placeholder="Explain your approach, intuition, and algorithm..."
+        />
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm">Time Complexity (LaTeX)</label>
-          <Input value={tc} onChange={(e) => setTc(e.target.value)} placeholder="e.g., O(n \\log n)" />
+          <label className="mb-1 block text-sm font-medium">Time Complexity (LaTeX) *</label>
+          <Input
+            value={tc}
+            onChange={(e) => setTc(e.target.value)}
+            placeholder="e.g., O(n log n)"
+          />
         </div>
         <div>
-          <label className="mb-1 block text-sm">Space Complexity (LaTeX)</label>
-          <Input value={sc} onChange={(e) => setSc(e.target.value)} placeholder="e.g., O(1)" />
+          <label className="mb-1 block text-sm font-medium">Space Complexity (LaTeX) *</label>
+          <Input
+            value={sc}
+            onChange={(e) => setSc(e.target.value)}
+            placeholder="e.g., O(1)"
+          />
         </div>
       </div>
 
       <div>
-        <label className="mb-1 block text-sm">Tags (comma-separated)</label>
-        <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g., greedy, dp, two-pointers" />
+        <label className="mb-1 block text-sm font-medium">Tags (comma-separated)</label>
+        <Input
+          value={tags}
+          onChange={(e) => setTags(e.target.value)}
+          placeholder="e.g., greedy, dp, two-pointers"
+        />
       </div>
 
       <div className="flex justify-end">

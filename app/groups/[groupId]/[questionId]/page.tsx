@@ -266,7 +266,7 @@ export default function GroupQuestionPage() {
       </section>
 
       <section className="mt-10">
-        <GroupLeaderboard groupId={groupId} />
+        {/* <GroupLeaderboard groupId={groupId} /> */}
       </section>
     </main>
   )
@@ -578,124 +578,124 @@ function AdminQuestionForm({
   )
 }
 
-function GroupLeaderboard({ groupId }: { groupId: string }) {
-  const { data: stats } = useSWRSubscription(groupId ? paths.groupStats(groupId) : null, (key, { next }) => {
-    const unsub = onValue(ref(db, key), (snap) => next(null, snap.val() as GroupStats | null))
-    return () => unsub()
-  })
+// function GroupLeaderboard({ groupId }: { groupId: string }) {
+//   const { data: stats } = useSWRSubscription(groupId ? paths.groupStats(groupId) : null, (key, { next }) => {
+//     const unsub = onValue(ref(db, key), (snap) => next(null, snap.val() as GroupStats | null))
+//     return () => unsub()
+//   })
 
-  const { data: members } = useSWRSubscription(groupId ? paths.groupMembers(groupId) : null, (key, { next }) => {
-    const unsub = onValue(ref(db, key), (snap) => next(null, snap.val() as GroupMembers | null))
-    return () => unsub()
-  })
+//   const { data: members } = useSWRSubscription(groupId ? paths.groupMembers(groupId) : null, (key, { next }) => {
+//     const unsub = onValue(ref(db, key), (snap) => next(null, snap.val() as GroupMembers | null))
+//     return () => unsub()
+//   })
 
-  const [userNames, setUserNames] = useState<NameMap>({})
+//   const [userNames, setUserNames] = useState<NameMap>({})
 
-  const rows = useMemo(() => {
-    if (!stats) return []
+//   const rows = useMemo(() => {
+//     if (!stats) return []
 
-    const now = Date.now()
-    const twentyFourHours = 24 * 60 * 60 * 1000
+//     const now = Date.now()
+//     const twentyFourHours = 24 * 60 * 60 * 1000
 
-    const statsEntries = Object.entries(stats) as [string, UserSubmissionStats | undefined][]
+//     const statsEntries = Object.entries(stats) as [string, UserSubmissionStats | undefined][]
 
-    const data = statsEntries
-      .map(([uid, s]) => ({
-        uid,
-        submissions: s?.submissions ?? 0,
-        lastSubmissionAt: s?.lastSubmissionAt ?? 0,
-      }))
-      .filter(s => now - s.lastSubmissionAt < twentyFourHours) // Keep only recent submissions
+//     const data = statsEntries
+//       .map(([uid, s]) => ({
+//         uid,
+//         submissions: s?.submissions ?? 0,
+//         lastSubmissionAt: s?.lastSubmissionAt ?? 0,
+//       }))
+//       .filter(s => now - s.lastSubmissionAt < twentyFourHours) // Keep only recent submissions
 
-    data.sort((a, b) => b.submissions - a.submissions || b.lastSubmissionAt - a.lastSubmissionAt)
-    return data
-  }, [stats])
+//     data.sort((a, b) => b.submissions - a.submissions || b.lastSubmissionAt - a.lastSubmissionAt)
+//     return data
+//   }, [stats])
 
-  const ratioMetric = useMemo(() => {
-    const uniqueSubmitters = stats ? Object.keys(stats).length : 0
-    const totalUsers = members ? Object.keys(members).length : 0
+//   const ratioMetric = useMemo(() => {
+//     const uniqueSubmitters = stats ? Object.keys(stats).length : 0
+//     const totalUsers = members ? Object.keys(members).length : 0
 
-    if (totalUsers === 0) {
-      return { display: "N/A", tooltip: "No members in group." }
-    }
+//     if (totalUsers === 0) {
+//       return { display: "N/A", tooltip: "No members in group." }
+//     }
 
-    const percentage = ((uniqueSubmitters / totalUsers) * 100).toFixed(0)
-    return {
-      display: `${uniqueSubmitters}/${totalUsers} (${percentage}%)`,
-      tooltip: `${uniqueSubmitters} unique users submitted / ${totalUsers} total group members.`,
-    }
-  }, [stats, members])
+//     const percentage = ((uniqueSubmitters / totalUsers) * 100).toFixed(0)
+//     return {
+//       display: `${uniqueSubmitters}/${totalUsers} (${percentage}%)`,
+//       tooltip: `${uniqueSubmitters} unique users submitted / ${totalUsers} total group members.`,
+//     }
+//   }, [stats, members])
 
-  const getDisplayName = (uid: string) => userNames[uid] || uid
+//   const getDisplayName = (uid: string) => userNames[uid] || uid
 
-  useEffect(() => {
-    if (!stats) return
-    const uidsInStats = Object.keys(stats)
-    const uidsToFetch = uidsInStats.filter(uid => !userNames[uid])
+//   useEffect(() => {
+//     if (!stats) return
+//     const uidsInStats = Object.keys(stats)
+//     const uidsToFetch = uidsInStats.filter(uid => !userNames[uid])
 
-    if (uidsToFetch.length === 0) return
+//     if (uidsToFetch.length === 0) return
 
-    const listeners: (() => void)[] = []
+//     const listeners: (() => void)[] = []
 
-    uidsToFetch.forEach(uid => {
-      const userRef = ref(db, `users/${uid}/displayName`)
-      const listener = onValue(userRef, (snap) => {
-        const name = snap.val()
-        if (name) {
-          setUserNames(prev => ({ ...prev, [uid]: name }))
-        } else {
-          setUserNames(prev => ({ ...prev, [uid]: "Unknown User" }))
-        }
-      })
-      listeners.push(listener)
-    })
+//     uidsToFetch.forEach(uid => {
+//       const userRef = ref(db, `users/${uid}/displayName`)
+//       const listener = onValue(userRef, (snap) => {
+//         const name = snap.val()
+//         if (name) {
+//           setUserNames(prev => ({ ...prev, [uid]: name }))
+//         } else {
+//           setUserNames(prev => ({ ...prev, [uid]: "Unknown User" }))
+//         }
+//       })
+//       listeners.push(listener)
+//     })
 
-    return () => {
-      listeners.forEach(unsub => unsub())
-    }
-  }, [stats, userNames])
+//     return () => {
+//       listeners.forEach(unsub => unsub())
+//     }
+//   }, [stats, userNames])
 
-  return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-medium">Group Metrics</h2>
-        <div 
-          className="text-sm text-muted-foreground cursor-default"
-          title={ratioMetric.tooltip}
-        >
-          Submissions: <span className="font-semibold text-primary">{ratioMetric.display}</span>
-        </div>
-      </div>
+//   return (
+//     <div>
+//       <div className="mb-3 flex items-center justify-between">
+//         <h2 className="text-lg font-medium">Group Metrics</h2>
+//         <div 
+//           className="text-sm text-muted-foreground cursor-default"
+//           title={ratioMetric.tooltip}
+//         >
+//           Submissions: <span className="font-semibold text-primary">{ratioMetric.display}</span>
+//         </div>
+//       </div>
 
-      {rows.length ? (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted-foreground">
-                <th className="py-2 pr-4">User</th>
-                <th className="py-2">Last submission</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.uid} className="border-t">
-                  <td className="py-2 pr-4">
-                    <a className="underline" href={`/contact/${r.uid}`}>
-                      {getDisplayName(r.uid)} 
-                    </a>
-                  </td>
-                  <td className="py-2">{r.lastSubmissionAt ? new Date(r.lastSubmissionAt).toLocaleString() : "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="mt-3 text-sm text-muted-foreground">No submissions in the last 24 hours.</div>
-      )}
-    </div>
-  )
-}
+//       {rows.length ? (
+//         <div className="mt-3 overflow-x-auto">
+//           <table className="w-full text-sm">
+//             <thead>
+//               <tr className="text-left text-muted-foreground">
+//                 <th className="py-2 pr-4">User</th>
+//                 <th className="py-2">Last submission</th>
+//               </tr>
+//             </thead>
+//             <tbody>
+//               {rows.map((r) => (
+//                 <tr key={r.uid} className="border-t">
+//                   <td className="py-2 pr-4">
+//                     <a className="underline" href={`/contact/${r.uid}`}>
+//                       {getDisplayName(r.uid)} 
+//                     </a>
+//                   </td>
+//                   <td className="py-2">{r.lastSubmissionAt ? new Date(r.lastSubmissionAt).toLocaleString() : "-"}</td>
+//                 </tr>
+//               ))}
+//             </tbody>
+//           </table>
+//         </div>
+//       ) : (
+//         <div className="mt-3 text-sm text-muted-foreground">No submissions in the last 24 hours.</div>
+//       )}
+//     </div>
+//   )
+// }
 
 function TimeRemaining({ expiresAt }: { expiresAt?: number | null }) {
   if (!expiresAt) return null

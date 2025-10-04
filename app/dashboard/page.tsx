@@ -156,191 +156,184 @@ export default function DashboardPage() {
         ) : (
           /* === Authenticated Dashboard Layout: Three-Column Grid === */
           // Layout uses a modern feel: Action sidebar, Main Content, Activity sidebar
-          <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-10 gap-6 sm:gap-8">
-            
-            {/* 1. Left Action Column (1/4 or 2/10) */}
-            <div className="lg:col-span-1 xl:col-span-2 space-y-6 hidden lg:block">
-                <Card className="p-4 shadow-xl border border-border/50 sticky top-4">
-                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-primary" />
-                        Quick Actions
-                    </h3>
-                    <div className="space-y-3">
-                        <Button asChild variant="ghost" className="w-full justify-start h-10">
-                            <Link href="/groups/new">
-                                <PlusCircle className="mr-3 h-4 w-4" />
-                                Create New Group
-                            </Link>
-                        </Button>
-                        <Button variant="ghost" className="w-full justify-start h-10" onClick={() => setJoinOpen(true)}>
-                            <Code className="mr-3 h-4 w-4" />
-                            Join with Code
-                        </Button>
-                        <Separator className="my-4" />
-                        <Button asChild variant="ghost" className="w-full justify-start h-10">
-                            <Link href="/profile">
-                                <Users className="mr-3 h-4 w-4" />
-                                Manage Profile
-                            </Link>
-                        </Button>
+          <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-6 gap-6 sm:gap-8">
+
+  {/* Sidebar: Quick Actions */}
+  <div className="lg:col-span-1 xl:col-span-2 hidden lg:block space-y-6">
+    <Card className="p-4 shadow-xl border border-border/50 sticky top-4">
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
+        <Zap className="h-4 w-4 text-primary" />
+        Quick Actions
+      </h3>
+      <div className="space-y-3">
+        <Button asChild variant="ghost" className="w-full justify-start h-10">
+          <Link href="/groups/new">
+            <PlusCircle className="mr-3 h-4 w-4" />
+            Create New Group
+          </Link>
+        </Button>
+        <Button variant="ghost" className="w-full justify-start h-10" onClick={() => setJoinOpen(true)}>
+          <Code className="mr-3 h-4 w-4" />
+          Join with Code
+        </Button>
+        <Separator className="my-4" />
+        <Button asChild variant="ghost" className="w-full justify-start h-10">
+          <Link href="/profile">
+            <Users className="mr-3 h-4 w-4" />
+            Manage Profile
+          </Link>
+        </Button>
+      </div>
+    </Card>
+  </div>
+
+  {/* Main Content: Groups */}
+  <div className="lg:col-span-3 xl:col-span-4 space-y-8">
+
+    {/* Your Groups Section */}
+    <section>
+      <Collapsible open={isYourGroupsOpen} onOpenChange={setIsYourGroupsOpen}>
+        <CollapsibleSectionHeader
+          title="Your Groups"
+          icon={Users}
+          isOpen={isYourGroupsOpen}
+          setIsOpen={setIsYourGroupsOpen}
+        />
+        <CollapsibleContent>
+          <Card className="mt-4 p-0 shadow-lg border-2 border-primary/10 h-[400px] lg:h-[600px] flex flex-col">
+            <ScrollArea className="flex-1 px-4 pb-4 overflow-y-auto">
+              <CardContent className="pt-4 sm:pt-6">
+                <GroupList />
+              </CardContent>
+            </ScrollArea>
+          </Card>
+
+          {Array.isArray(myGroups) && myGroups.length === 0 && (
+            <Card className="mt-4 p-6 text-center shadow-lg">
+              <CardTitle className="text-lg">No Groups Yet!</CardTitle>
+              <CardDescription className="mt-2">
+                Start by creating a new group or joining one with a code.
+              </CardDescription>
+              <Button asChild className="mt-4">
+                <Link href="/groups/new">Create First Group</Link>
+              </Button>
+            </Card>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+    </section>
+
+    {/* Discoverable Groups Section */}
+    <section>
+      <Collapsible open={isDiscoverGroupsOpen} onOpenChange={setIsDiscoverGroupsOpen}>
+        <CollapsibleSectionHeader
+          title="Discover New Groups"
+          icon={Swords}
+          isOpen={isDiscoverGroupsOpen}
+          setIsOpen={setIsDiscoverGroupsOpen}
+        />
+        <CollapsibleContent>
+          <Card className="mt-4 shadow-lg h-[450px] lg:h-[650px] flex flex-col">
+            <CardHeader className="pb-4">
+              <CardDescription className="text-sm">
+                Public groups accepting new members. Join a challenge or a learning community!
+              </CardDescription>
+            </CardHeader>
+            <ScrollArea className="flex-1 px-4 pb-4 overflow-y-auto">
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {discoverableGroups.length > 0 ? (
+                    discoverableGroups.map((g: any) => (
+                      <GroupCard
+                        key={g.id}
+                        groupId={g.id}
+                        name={g.name}
+                        description={g.description}
+                        isMember={false}
+                        isAdmin={g.adminUid === user.uid}
+                        discoverable={!!g.discoverable}
+                        adminUid={g.adminUid}
+                      />
+                    ))
+                  ) : (
+                    <div className="text-sm text-muted-foreground col-span-full py-8 text-center border border-dashed rounded-lg">
+                      No public groups to discover right now. Check back later!
                     </div>
-                </Card>
-            </div>
-
-
-            {/* 2. Middle Column (Groups) - Takes 2/4 or 5/10 space on large screens */}
-            <div className="lg:col-span-2 xl:col-span-5 space-y-8">
-              
-              {/* Your Groups Section (Collapsible & High-Priority) */}
-{/* Your Groups Section (Collapsible & High-Priority) */}
-<section>
-  <Collapsible open={isYourGroupsOpen} onOpenChange={setIsYourGroupsOpen}>
-    <CollapsibleSectionHeader 
-      title="Your Groups" 
-      icon={Users} 
-      isOpen={isYourGroupsOpen} 
-      setIsOpen={setIsYourGroupsOpen} 
-    />
-    <CollapsibleContent>
-      <Card className="mt-4 p-0 shadow-lg border-2 border-primary/10 h-[400px] lg:h-[600px] flex flex-col">
-        {/* Scrollable area for groups */}
-        <ScrollArea className="flex-1 px-4 pb-4 overflow-y-auto">
-          <CardContent className="pt-4 sm:pt-6">
-            {/* GroupList should use a responsive grid internally if possible */}
-            <GroupList /> 
-          </CardContent>
-        </ScrollArea>
-      </Card>
-
-      {/* Fallback for empty state on Your Groups */}
-      {Array.isArray(myGroups) && myGroups.length === 0 && (
-        <Card className="mt-4 p-6 text-center shadow-lg">
-          <CardTitle className="text-lg">No Groups Yet!</CardTitle>
-          <CardDescription className="mt-2">
-            Start by creating a new group or joining one with a code.
-          </CardDescription>
-          <Button asChild className="mt-4">
-            <Link href="/groups/new">Create First Group</Link>
-          </Button>
-        </Card>
-      )}
-    </CollapsibleContent>
-  </Collapsible>
-</section>
-
-
-              {/* Discoverable Groups Section (Collapsible & Secondary Priority) */}
-              <section>
-  <Collapsible open={isDiscoverGroupsOpen} onOpenChange={setIsDiscoverGroupsOpen}>
-    <CollapsibleSectionHeader 
-      title="Discover New Groups" 
-      icon={Swords} // Changed to Swords (or something competition related)
-      isOpen={isDiscoverGroupsOpen} 
-      setIsOpen={setIsDiscoverGroupsOpen} 
-    />
-    <CollapsibleContent>
-      <Card className="mt-4 shadow-lg h-[450px] lg:h-[650px] flex flex-col">
-        <CardHeader className="pb-4">
-          <CardDescription className="text-sm">
-            Public groups accepting new members. Join a challenge or a learning community!
-          </CardDescription>
-        </CardHeader>
-      
-        {/* Scrollable area */}
-        <ScrollArea className="flex-1 px-4 pb-4 overflow-y-auto">
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              {discoverableGroups.length > 0 ? (
-                discoverableGroups.map((g: any) => (
-                  <GroupCard
-                    key={g.id}
-                    groupId={g.id}
-                    name={g.name}
-                    description={g.description}
-                    isMember={false}
-                    isAdmin={g.adminUid === user.uid}
-                    discoverable={!!g.discoverable}
-                    adminUid={g.adminUid}
-                  />
-                ))
-              ) : (
-                <div className="text-sm text-muted-foreground col-span-full py-8 text-center border border-dashed rounded-lg">
-                  No public groups to discover right now. Check back later!
+                  )}
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </ScrollArea>
-      </Card>
-    </CollapsibleContent>
-  </Collapsible>
-</section>
+              </CardContent>
+            </ScrollArea>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
+    </section>
 
-            </div>
+    {user?.email === 'priyanshu40507@gmail.com' && (
+  <section className="space-y-4">
+    <div className="flex items-center gap-3 mb-4">
+      <Clock className="w-5 h-5 text-primary shrink-0" />
+      <h2 className="text-xl font-semibold tracking-tight text-foreground">
+        Global Activity
+      </h2>
+    </div>
 
-            {/* 3. Right Activity Column (1/4 or 3/10) */}
-            <div className="lg:col-span-1 xl:col-span-3">
-              <section>
-                <div className="flex items-center gap-3 mb-4">
-                  <Clock className="w-5 h-5 text-primary shrink-0" />
-                  <h2 className="text-xl font-semibold tracking-tight text-foreground">Global Activity</h2>
-                </div>
-                {/* Fixed height to force scrolling and prevent a "big block" in worst case data */}
-                <Card className="h-[450px] lg:h-[700px] flex flex-col shadow-xl border-primary/20"> 
-                  <CardHeader className="pb-3">
-                    <CardDescription className="text-sm">
-                      Latest solutions submitted across all groups.
-                    </CardDescription>
-                  </CardHeader>
-                  {/* ScrollArea handles overflow gracefully */}
-                  <ScrollArea className="flex-1 px-4 pb-4 overflow-y-auto"> 
-                    <div className="space-y-3 pr-2">
-                      {recent?.length ? (
-                        recent.map((s: any) => (
-                          <Link href={`/groups/${s.groupId}`} key={s.id} className="block">
-                            <div className="rounded-lg border p-3 text-sm transition-all hover:bg-accent/70 hover:shadow-md cursor-pointer">
-                              <div className="flex items-start justify-between gap-2">
-                                {/* Author Name/Link */}
-                                <div className="font-semibold line-clamp-1 min-w-0 flex-1">
-                                    {s.authorName}
-                                </div>
-                                {/* Time/Language */}
-                                <Badge 
-                                    variant="secondary" 
-                                    className="text-xs font-normal bg-primary/10 text-primary shrink-0"
-                                >
-                                    {s.language}
-                                </Badge>
-                              </div>
-                              
-                              {/* Problem/Assignment */}
-                              <div className="text-xs text-muted-foreground line-clamp-1 mt-1">
-                                {s.problemLink || "Custom Assignment"}
-                              </div>
+    <Card className="h-[450px] lg:h-[700px] flex flex-col shadow-xl border border-primary/20">
+      <CardHeader className="pb-3">
+        <CardDescription className="text-sm">
+          Latest solutions submitted across all groups.
+        </CardDescription>
+      </CardHeader>
 
-                              {/* View Link & Group Name */}
-                              <div className="mt-2 flex justify-between items-center text-xs">
-                                <span className="text-primary font-medium hover:underline">
-                                    View Submission
-                                </span>
-                                <div className="text-muted-foreground">
-                                    {s.createdAt ? formatDistanceToNowStrict(s.createdAt, { addSuffix: true }) : 'just now'}
-                                </div>
-                              </div>
-                            </div>
-                          </Link>
-                        ))
-                      ) : (
-                        <div className="text-sm text-muted-foreground p-8 text-center">
-                          No recent activity yet. Be the first to submit a solution!
-                        </div>
-                      )}
+      <ScrollArea className="flex-1 px-4 pb-4 overflow-y-auto">
+        <div className="space-y-3 pr-2">
+          {recent?.length ? (
+            recent.map((s: any) => (
+              <Link href={`/groups/${s.groupId}`} key={s.id} className="block">
+                <div className="rounded-lg border p-3 text-sm transition-all hover:bg-accent/70 hover:shadow-md cursor-pointer">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-semibold line-clamp-1 min-w-0 flex-1">
+                      {s.authorName}
                     </div>
-                  </ScrollArea>
-                </Card>
-              </section>
+                    <Badge
+                      variant="secondary"
+                      className="text-xs font-normal bg-primary/10 text-primary shrink-0"
+                    >
+                      {s.language}
+                    </Badge>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground line-clamp-1 mt-1">
+                    {s.problemLink || 'Custom Assignment'}
+                  </div>
+
+                  <div className="mt-2 flex justify-between items-center text-xs">
+                    <span className="text-primary font-medium hover:underline">
+                      View Submission
+                    </span>
+                    <div className="text-muted-foreground">
+                      {s.createdAt
+                        ? formatDistanceToNowStrict(s.createdAt, { addSuffix: true })
+                        : 'just now'}
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))
+          ) : (
+            <div className="text-sm text-muted-foreground p-8 text-center">
+              No recent activity yet. Be the first to submit a solution!
             </div>
-          </div>
+          )}
+        </div>
+      </ScrollArea>
+    </Card>
+  </section>
+)}
+
+  </div>
+</div>
+
+                  
         )}
 
         {/* Join Group Modal (remains the same) */}
