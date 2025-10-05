@@ -1,34 +1,54 @@
-import 'dotenv/config'
+import 'dotenv/config';
 import type { Handler } from "@netlify/functions";
 import { db } from "../../lib/firebase-admin";
-import { paths } from "../../lib/paths"; 
+import { paths } from "../../lib/paths";
 
 // Utility: delete all children of a path
 async function deleteAllAtPath(path: string) {
-  console.log(`Deleting at path: ${path}`);
-  await db.ref(path).remove();
+  try {
+    console.log(`Deleting at path: ${path}`);
+    await db.ref(path).remove();
+    console.log(`Successfully deleted: ${path}`);
+  } catch (err) {
+    console.error(`Failed to delete ${path}:`, err);
+    throw err; // Optional: rethrow to propagate error
+  }
 }
 
 export const handler: Handler = async () => {
   try {
     console.log("Cleanup function started");
-    // Clean ephemeral collections
-    await Promise.all([
-      deleteAllAtPath("ephemeralSubmissions"),
-      deleteAllAtPath("groupQuestions"),
-      deleteAllAtPath("indexByAuthor"),
-      deleteAllAtPath("indexByLanguage"),
-      deleteAllAtPath("indexBytag"),
-      deleteAllAtPath("solutions_global"),
-    ]);
+
+    const pathsToDelete = [
+      "ephemeralSubmissions",
+      "groupQuestions",
+      "indexByAuthor",
+      "indexByLanguage",
+      "indexByTag", // ✅ Corrected casing
+      "solutions_global",
+    ];
+
+    await Promise.all(pathsToDelete.map(deleteAllAtPath));
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true, message: "Cleanup complete" }),
+      body: JSON.stringify({
+        success: true,
+        message: "Cleanup complete",
+        timestamp: new Date().toISOString(),
+      }),
     };
   } catch (error) {
     console.error("Cleanup failed", error);
-    return { statusCode: 500, body: JSON.stringify({ error: "Cleanup failed" }) };
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        success: false,
+        error: "Cleanup failed",
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      }),
+    };
   }
 };
 
