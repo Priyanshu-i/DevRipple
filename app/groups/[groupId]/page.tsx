@@ -401,43 +401,45 @@ export default function QuestionIndexPage() {
 
             // Fetch all member-specific data concurrently
             const members: LeaderboardEntry[] = await Promise.all(
-                memberUids.map(async (uid) => {
-                    // Get user public info
-                    const userPublicSnap = await get(ref(db, paths.userPublic(uid)));
-                    const userPublicData = userPublicSnap.val();
-                    const name = userPublicData?.displayName || 'Unknown User';
-                    
-                    // Get member total stats
-                    const memberStatsSnap = await get(ref(db, paths.groupMemberStats(groupId, uid)));
-                    const memberStats = memberStatsSnap.val();
-                    const totalSubmissions = memberStats?.totalSubmissions || 0;
-                    
-                    // Get per-question stats for this user
-                    const questionStats: LeaderboardEntry['questionStats'] = {};
-                    
-                    await Promise.all(
-                        questions.map(async (question) => {
-                            const userQStatsPath = paths.userQuestionStats(groupId, question.questionId, uid);
-                            const userQStatsSnap = await get(ref(db, userQStatsPath));
-                            const data: MemberQuestionStatsRTDB | null = userQStatsSnap.val();
+        memberUids.map(async (uid) => {
+        // Get user public info
+        const userPublicSnap = await get(ref(db, paths.userPublic(uid)));
+        const userPublicData = userPublicSnap.val();
+        
+        // Since userPublic is now initialized on sign-in, prioritize displayName, then username
+        const name = userPublicData?.displayName || userPublicData?.username || 'User';
+        
+        // Get member total stats
+        const memberStatsSnap = await get(ref(db, paths.groupMemberStats(groupId, uid)));
+        const memberStats = memberStatsSnap.val();
+        const totalSubmissions = memberStats?.totalSubmissions || 0;
+        
+        // Get per-question stats for this user
+        const questionStats: LeaderboardEntry['questionStats'] = {};
+        
+        await Promise.all(
+            questions.map(async (question) => {
+                const userQStatsPath = paths.userQuestionStats(groupId, question.questionId, uid);
+                const userQStatsSnap = await get(ref(db, userQStatsPath));
+                const data: MemberQuestionStatsRTDB | null = userQStatsSnap.val();
 
-                            if (data) {
-                                questionStats[question.questionId] = {
-                                    submissionCount: data.submissionCount || 0,
-                                    solutionIds: data.solutionIds || [],
-                                };
-                            }
-                        })
-                    );
-
-                    return {
-                        uid,
-                        name,
-                        totalSubmissions,
-                        questionStats,
+                if (data) {
+                    questionStats[question.questionId] = {
+                        submissionCount: data.submissionCount || 0,
+                        solutionIds: data.solutionIds || [],
                     };
-                })
-            );
+                }
+            })
+        );
+
+        return {
+            uid,
+            name,
+            totalSubmissions,
+            questionStats,
+        };
+    })
+);
 
             const activeMembers = members.filter(m => m.totalSubmissions > 0);
 

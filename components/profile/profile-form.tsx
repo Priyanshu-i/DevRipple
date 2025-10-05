@@ -65,9 +65,10 @@ export function ProfileForm() {
 				console.log("✅ ProfileForm: Profile exists, loaded data")
 			} else {
 				setExists(false)
+				const defaultName = auth.currentUser?.displayName || ""
 				setProfile({ 
-					displayName: auth.currentUser?.displayName || "",
-					username: "",
+					displayName: defaultName,
+					username: defaultName || "",
 					bio: "",
 					linkedin: "",
 					github: "",
@@ -75,6 +76,21 @@ export function ProfileForm() {
 					preferredLanguage: "",
 					leetcode: ""
 				})
+
+							const uid = auth.currentUser?.uid
+				if (uid && defaultName) {
+					const userPublicPath = paths.userPublic(uid)
+					set(ref(db, userPublicPath), {
+						displayName: defaultName,
+						username: defaultName || null,
+						bio: "",
+						linkedin: "",
+						github: "",
+						website: "",
+					})
+						.then(() => console.log("✅ Default userPublic profile initialized"))
+						.catch((e) => console.error("⚠️ Failed to init userPublic:", e))
+				}
 				console.log("⚠️ ProfileForm: No profile found, initialized with defaults")
 			}
 		})

@@ -49,16 +49,25 @@ export default function GroupInfoPage() {
   const [searchTerm, setSearchTerm] = useState("")
 
   const getDisplayName = useCallback((uid: string) => {
-    return userProfiles[uid]?.displayName || uid
+    // Prioritize displayName, then username, then fallback to 'User'
+    return userProfiles[uid]?.displayName ||  'User'
   }, [userProfiles])
   
   const getInitials = (uid: string) => {
     const displayName = getDisplayName(uid)
-    const parts = displayName.split(/\s+/)
-    if (parts.length > 1) {
-        return (parts[0][0] + parts[1][0]).toUpperCase()
+    
+    // Handle "User" fallback case
+    if (displayName === 'User') {
+        return 'U'
     }
-    return displayName[0]?.toUpperCase() || '?'
+    
+    const parts = displayName.split(/\s+/).filter(Boolean) // Filter out empty strings
+    
+    if (parts.length > 1) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    
+    return displayName[0]?.toUpperCase() || 'U'
   }
 
   // --- All useEffect hooks must remain at the top level ---
@@ -102,7 +111,7 @@ export default function GroupInfoPage() {
         if (v) {
           setUserProfiles(prev => ({
             ...prev,
-            [uid]: { displayName: v.displayName || "No Name" }
+            [uid]: { displayName: v.displayName || v.username || "No Name" },
           }))
         }
       })
@@ -208,7 +217,7 @@ export default function GroupInfoPage() {
               {group?.name || "Group"}
             </CardTitle>
             <Badge variant={isMember ? "default" : "secondary"} className="text-sm px-3 py-1">
-                {isMember ? "Member" : "Not Joined"}
+                {isAdmin ? "Admin" : isSecondaryAdmin ? "Secondary Admin" : isMember ? "Member" : "Not Joined"}
             </Badge>
           </div>
           <CardDescription>

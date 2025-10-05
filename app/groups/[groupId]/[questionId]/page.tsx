@@ -174,6 +174,13 @@ export default function GroupQuestionPage() {
   } else {
     questionSectionHeader = "Invalid URL"
   }
+  const { data: userPublic } = useSWRSubscription(
+  user?.uid ? paths.userPublic(user.uid) : null,
+  (key, { next }) => {
+    const unsub = onValue(ref(db, key), (snap) => next(null, snap.val()))
+    return () => unsub()
+  }
+)
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
@@ -254,7 +261,7 @@ export default function GroupQuestionPage() {
               key={s.id}
               groupId={groupId}
               questionId={questionId}
-              userDisplayName={user?.displayName ?? "Anonymous"}
+              userDisplayName={userPublic?.displayName || userPublic?.username || user?.displayName || user?.email?.split('@')[0] || "User"}
               userUid={user?.uid ?? null}
               solution={s}
               onUpvote={() => toggleUpvote(s.id)}

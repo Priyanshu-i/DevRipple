@@ -5,7 +5,8 @@ import type React from "react"
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { onAuthStateChanged, type User, signInWithPopup, signOut } from "firebase/auth"
 import { auth, googleProvider, db } from "@/lib/firebase"
-import { ref, serverTimestamp, update } from "firebase/database"
+import { ref, serverTimestamp, update, get, set } from "firebase/database"
+import { paths } from "@/lib/paths"
 
 type AuthContextValue = {
   user: User | null
@@ -29,8 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u)
       setLoading(false)
+      
       if (u) {
-        // Create/update profile node
+        // 1. Create/update main user profile node
         const userRef = ref(db, `users/${u.uid}`)
         await update(userRef, {
           uid: u.uid,
@@ -39,6 +41,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: u.email ?? "",
           updatedAt: serverTimestamp(),
         })
+
+        // 2. Initialize userPublic if it doesn't exist
+        const userPublicRef = ref(db, paths.userPublic(u.uid))
+        const snapshot = await get(userPublicRef)
+        
+        if (!snapshot.exists()) {
+          // Extract display name: prioritize Firebase displayName, fallback to email username
+          const displayName = u.displayName || u.email?.split('@')[0] || "User"
+          
+          await set(userPublicRef, {
+            displayName: displayName,
+            username: displayName,
+            email: u.email || "",
+            bio: "",
+            linkedin: "",
+            github: "",
+            website: "",
+          })
+          
+          console.log("✅ userPublic initialized on sign-in:", displayName)
+        }
       }
     })
     return () => unsub()

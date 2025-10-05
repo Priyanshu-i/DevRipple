@@ -319,9 +319,6 @@ export default function ProfilePage() {
         )
     }
 
-    
-
-
     return (
         <main className="mx-auto max-w-3xl pb-10">
             {/* 1. Cover Image and Profile Header (Twitter-like) */}

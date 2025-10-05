@@ -27,6 +27,7 @@ interface UserPublicProfile {
     website?: string 
     // ✅ This field is where the Google profile avatar pic URL is stored
     photoURL?: string 
+    email ?: string
 } 
 
 // Type for the SWR subscription 'next' callback parameter 
@@ -178,6 +179,13 @@ export default function ContactPage() {
                                 <AtSign className="w-4 h-4 mr-1.5 flex-shrink-0" /> 
                                 {profile?.username || "No Username"}
                             </p>
+
+                            {profile?.email && (
+                                <p className="mt-1 text-sm font-medium text-gray-500 dark:text-gray-400 flex items-center">
+                                    <AtSign className="w-4 h-4 mr-1.5 flex-shrink-0" />
+                                    {profile.email}
+                                </p>
+                            )}
                         </div>
                         
                     </div>
